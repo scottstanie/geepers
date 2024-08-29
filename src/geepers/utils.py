@@ -1,6 +1,34 @@
 import os
 import sys
 from pathlib import Path
+from typing import Sequence
+
+import numpy as np
+
+from ._types import DateOrDatetime
+
+
+def datetime_to_float(dates: Sequence[DateOrDatetime]) -> np.ndarray:
+    """Convert a sequence of datetime objects to a float representation.
+
+    Output units are in days since the first item in `dates`.
+
+    Parameters
+    ----------
+    dates : Sequence[DateOrDatetime]
+        List of datetime objects to convert to floats
+
+    Returns
+    -------
+    date_arr : np.array 1D
+        The float representation of the datetime objects
+
+    """
+    sec_per_day = 60 * 60 * 24
+    date_arr = np.asarray(dates).astype("datetime64[s]")
+    # Reference the 0 to the first date
+    date_arr = date_arr - date_arr[0]
+    return date_arr.astype(float) / sec_per_day
 
 
 def get_cache_dir(force_posix=False, app_name="geepers") -> Path:
@@ -46,29 +74,3 @@ def get_cache_dir(force_posix=False, app_name="geepers") -> Path:
             os.environ.get("XDG_CONFIG_HOME", Path("~/.cache").expanduser())
         )
         return base_path / app_name
-
-
-def station_distance(station_name1: str, station_name2: str) -> float:
-    """Find geodetic distance (in meters) between two gps stations.
-
-    Uses the WGS84 ellipsoid for calculation.
-
-    Parameters
-    ----------
-    station_name1 :str)
-        name of first GPS station
-    station_name2 :str)
-        name of second GPS station
-
-    Returns:
-        float: distance (in meters)
-    """
-    from .download import station_lonlat
-    from pyproj import Geod
-
-    lon1, lat1 = station_lonlat(station_name1)
-    lon2, lat2 = station_lonlat(station_name2)
-
-    g = Geod(ellps="WGS84")
-
-    return g.line_length([lon1, lon2], [lat1, lat2], radians=False)

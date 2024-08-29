@@ -1,0 +1,430 @@
+"""GPS data handling and downloading functionality.
+
+This module provides functions to download GPS station data, manage station
+information, and handle GPS time series data.
+"""
+
+from __future__ import annotations
+
+import datetime
+import logging
+from collections.abc import Sequence, Set
+from pathlib import Path
+
+import geopandas as gpd
+import numpy as np
+import pandas as pd
+import rasterio
+import requests
+from shapely.geometry import Point, box
+
+from geepers import utils
+
+from ._types import Bbox, PathOrStr
+
+# Constants
+GPS_BASE_URL = "http://geodesy.unr.edu/gps_timeseries/tenv3/IGS14/{station}.tenv3"
+GPS_DIR = utils.get_cache_dir()
+STATION_LLH_URL = "http://geodesy.unr.edu/NGLStationPages/llh.out"
+STATION_LLH_FILE = str(GPS_DIR / "station_llh_all_{today}.csv")
+
+logger = logging.getLogger(__name__)
+
+
+def get_stations_within_image(
+    filename: str,
+    bad_vals: Set[float] | None = None,
+    mask_invalid: bool = True,
+    exclude_stations: Sequence[str] = None,
+) -> gpd.GeoDataFrame:
+    """
+    Find GPS stations within a given geocoded image.
+
+    Parameters
+    ----------
+    filename : str
+        Path to the geocoded image file (must be readable by rasterio).
+    bad_vals : list of float, optional
+        Values (besides NaN) indicating no data. Default is [0].
+    mask_invalid : bool, optional
+        If True, don't return stations where the image value is NaN or in bad_vals.
+        Default is True.
+    exclude_stations : str or list of str, optional
+        Station(s) to manually ignore. Default is None.
+
+    Returns
+    -------
+    geopandas.GeoDataFrame
+        A GeoDataFrame containing information about the GPS stations within the image.
+
+    Notes
+    -----
+    This function assumes the image is in a geographic coordinate system (lat/lon).
+    """
+    if bad_vals is None:
+        bad_vals = [0]
+
+    # Get all GPS stations
+    gdf_all = read_station_llas(to_geodataframe=True)
+    # Read the image metadata
+    gdf_all.set_crs(epsg=4326, inplace=True)  # Assuming WGS84
+
+    # Read the image metadata
+    with rasterio.open(filename) as src:
+        image_poly = box(*src.bounds)
+        image_crs = src.crs
+
+    # Reproject if necessary
+    if image_crs != gdf_all.crs:
+        gdf_all = gdf_all.to_crs(image_crs)
+
+    # Filter stations within the image bounds
+    gdf_within = gdf_all[gdf_all.geometry.within(image_poly)].copy()
+
+    if mask_invalid:
+        with rasterio.open(filename) as src:
+            valid_stations = []
+            for idx, row in gdf_within.iterrows():
+                x, y = row.geometry.x, row.geometry.y
+                py, px = src.index(x, y)
+                try:
+                    val = src.read(1, window=((py, py + 1), (px, px + 1)))[0][0]
+                    if not (
+                        np.isnan(val) or any(np.isclose(val, bv) for bv in bad_vals)
+                    ):
+                        valid_stations.append(idx)
+                except IndexError:
+                    # This can happen if the point falls exactly on the edge of the image
+                    continue
+
+        gdf_within = gdf_within.loc[valid_stations]
+
+    # Exclude specified stations
+    if exclude_stations:
+        gdf_within = gdf_within[
+            ~gdf_within.name.isin([s.upper() for s in exclude_stations])
+        ]
+
+    # Reset index for cleaner output
+    gdf_within.reset_index(drop=True, inplace=True)
+
+    return gdf_within
+
+
+def download_station_data(
+    station_name: str, coords: str = "enu", plate_fixed: bool = False
+) -> None:
+    """Download GPS station data from the Nevada Geodetic Laboratory.
+
+    Parameters
+    ----------
+    station_name : str
+        The name of the GPS station.
+    coords : str, optional
+        The coordinate system of the data to download. Either "enu" (east, north, up)
+        or "xyz" (ECEF coordinates). Default is "enu".
+    plate_fixed : bool, optional
+        Whether to download plate-fixed data. Only applicable for "enu" coordinates.
+        Default is False.
+
+    Raises
+    ------
+    ValueError
+        If an invalid coordinate system is specified.
+    requests.HTTPError
+        If the download request fails.
+    """
+    station_name = station_name.upper()
+    plate = _get_station_plate(station_name)
+
+    if coords == "enu":
+        if plate_fixed:
+            url = f"http://geodesy.unr.edu/gps_timeseries/tenv3/plates/{plate}/{station_name}.{plate}.tenv3"
+            filename = GPS_DIR / f"{station_name}_{plate}.tenv3"
+        else:
+            url = GPS_BASE_URL.format(station=station_name)
+            filename = GPS_DIR / f"{station_name}.tenv3"
+    elif coords == "xyz":
+        url = f"http://geodesy.unr.edu/gps_timeseries/txyz/IGS14/{station_name}.txyz2"
+        filename = GPS_DIR / f"{station_name}.txyz2"
+    else:
+        raise ValueError("coords must be either 'enu' or 'xyz'")
+
+    response = requests.get(url)
+    response.raise_for_status()
+
+    filename.parent.mkdir(parents=True, exist_ok=True)
+    filename.write_text(response.text)
+    logger.info(f"Saved {url} to {filename}")
+
+
+def _get_station_plate(station_name: str) -> str:
+    """Get the tectonic plate for a given GPS station.
+
+    Parameters
+    ----------
+    station_name : str
+        The name of the GPS station.
+
+    Returns
+    -------
+    str
+        The two-letter code for the tectonic plate.
+
+    Raises
+    ------
+    ValueError
+        If the plate information cannot be found for the station.
+    requests.HTTPError
+        If the request to fetch station information fails.
+    """
+    url = f"http://geodesy.unr.edu/NGLStationPages/stations/{station_name}.sta"
+    response = requests.get(url)
+    response.raise_for_status()
+
+    import re
+
+    match = re.search(r"(?P<plate>[A-Z]{2}) Plate Fixed", response.text)
+    if not match:
+        raise ValueError(f"Could not find plate name on {url}")
+    return match.group("plate")
+
+
+def load_station_enu(
+    station_name: str,
+    start_date: str | datetime.date | None = None,
+    end_date: str | datetime.date | None = None,
+    download_if_missing: bool = True,
+    zero_by: str = "mean",
+) -> pd.DataFrame:
+    """Load GPS station data in the east-north-up (ENU) coordinate system.
+
+    Parameters
+    ----------
+    station_name : str
+        The name of the GPS station.
+    start_date : str or datetime.date, optional
+        The start date for the data. If None, use all available data.
+    end_date : str or datetime.date, optional
+        The end date for the data. If None, use all available data.
+    download_if_missing : bool, optional
+        Whether to download the data if it's not found locally. Default is True.
+    zero_by : str, optional
+        How to zero the data. Either "mean" or "start". Default is "mean".
+
+    Returns
+    -------
+    pd.DataFrame
+        A DataFrame containing the ENU data for the specified station and date range.
+
+    Raises
+    ------
+    ValueError
+        If the station data file is not found and download_if_missing is False.
+    """
+    station_name = station_name.upper()
+    gps_data_file = GPS_DIR / f"{station_name}.tenv3"
+
+    if not gps_data_file.exists():
+        if download_if_missing:
+            logger.info(f"Downloading {station_name} to {gps_data_file}")
+            download_station_data(station_name, coords="enu")
+        else:
+            raise ValueError(
+                f"{gps_data_file} does not exist, download_if_missing = False"
+            )
+
+    df = pd.read_csv(gps_data_file, sep=r"\s+", engine="c")
+    df = _clean_gps_df(df, start_date, end_date, coords="enu")
+
+    if zero_by.lower() == "mean":
+        mean_val = df[["east", "north", "up"]].mean()
+        df[["east", "north", "up"]] -= mean_val
+    elif zero_by.lower() == "start":
+        start_val = df[["east", "north", "up"]].iloc[:10].mean()
+        df[["east", "north", "up"]] -= start_val
+    else:
+        raise ValueError("zero_by must be either 'mean' or 'start'")
+
+    return df.set_index("date")
+
+
+def _clean_gps_df(
+    df: pd.DataFrame,
+    start_date: str | datetime.date | None = None,
+    end_date: str | datetime.date | None = None,
+    coords: str = "enu",
+) -> pd.DataFrame:
+    """Clean and preprocess the GPS DataFrame.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        The raw GPS DataFrame.
+    start_date : str or datetime.date, optional
+        The start date for the data. If None, use all available data.
+    end_date : str or datetime.date, optional
+        The end date for the data. If None, use all available data.
+    coords : str, optional
+        The coordinate system of the data. Either "enu" or "xyz". Default is "enu".
+
+    Returns
+    -------
+    pd.DataFrame
+        The cleaned GPS DataFrame.
+
+    Raises
+    ------
+    ValueError
+        If an invalid coordinate system is specified.
+    """
+    df["date"] = pd.to_datetime(df["YYMMMDD"], format="%y%b%d")
+
+    if start_date:
+        df = df[df["date"] >= pd.to_datetime(start_date)]
+    if end_date:
+        df = df[df["date"] <= pd.to_datetime(end_date)]
+
+    if coords == "enu":
+        df_out = df[["date", "__east(m)", "_north(m)", "____up(m)"]]
+    elif coords == "xyz":
+        df_out = df[["date", "x", "y", "z"]]
+    else:
+        raise ValueError("coords must be either 'enu' or 'xyz'")
+
+    df_out = df_out.rename(columns=lambda s: s.replace("_", "").replace("(m)", ""))
+    return df_out.reset_index(drop=True)
+
+
+def download_station_locations(filename: PathOrStr, url: str) -> None:
+    """Download the station location file from the Nevada Geodetic Laboratory.
+
+    Parameters
+    ----------
+    filename : str or Path
+        The path to save the downloaded file.
+    url : str
+        The URL to download the station location file from.
+
+    Raises
+    ------
+    requests.HTTPError
+        If the download request fails.
+    """
+    resp = requests.get(url)
+    resp.raise_for_status()
+
+    with open(filename, "w") as f:
+        f.write(resp.text)
+
+
+def read_station_llas(
+    filename: PathOrStr | None = None, to_geodataframe: bool = False
+) -> pd.DataFrame:
+    """Read the station latitude, longitude, and altitude (LLA) data.
+
+    Parameters
+    ----------
+    filename : str or Path, optional
+        The path to the station LLA file. If None, use the default location.
+    to_geodataframe : bool, optional
+        Whether to return a GeoDataFrame instead of a DataFrame. Default is False.
+
+    Returns
+    -------
+    pd.DataFrame or geopandas.GeoDataFrame
+        A DataFrame or GeoDataFrame containing the station LLA data.
+
+    Raises
+    ------
+    FileNotFoundError
+        If the station LLA file is not found and cannot be downloaded.
+    """
+    today = datetime.date.today().strftime("%Y%m%d")
+    filename = filename or STATION_LLH_FILE.format(today=today)
+    lla_path = Path(filename)
+
+    utils.remove_old_files(lla_path)
+
+    try:
+        df = pd.read_csv(lla_path, sep=r"\s+", engine="c", header=None)
+    except FileNotFoundError:
+        logger.info(f"Downloading from {STATION_LLH_URL} to {lla_path}")
+        download_station_locations(lla_path, STATION_LLH_URL)
+        df = pd.read_csv(lla_path, sep=r"\s+", engine="c", header=None)
+
+    df.columns = ["name", "lat", "lon", "alt"]
+    df.loc[:, "lon"] = df.lon - (np.round(df.lon / 360) * 360)
+
+    if to_geodataframe:
+        import geopandas as gpd
+
+        return gpd.GeoDataFrame(df, geometry=gpd.points_from_xy(df.lon, df.lat))
+    else:
+        return df
+
+
+def station_lonlat(station_name: str) -> tuple[float, float]:
+    """Get the longitude and latitude of a GPS station.
+
+    Parameters
+    ----------
+    station_name : str
+        The name of the GPS station.
+
+    Returns
+    -------
+    tuple[float, float]
+        The longitude and latitude of the station in degrees.
+
+    Raises
+    ------
+    ValueError
+        If the station is not found in the LLA data.
+    """
+    df = read_station_llas()
+    station_name = station_name.upper()
+    if station_name not in df["name"].values:
+        import difflib
+
+        closest_names = difflib.get_close_matches(station_name, df["name"], n=5)
+        raise ValueError(
+            f"No station named {station_name} found. Closest: {closest_names}"
+        )
+    _, lat, lon, _ = df[df["name"] == station_name].iloc[0]
+    return lon, lat
+
+
+def station_distance(station_name1: str, station_name2: str) -> float:
+    """Find geodetic distance (in meters) between two gps stations.
+
+    Uses the WGS84 ellipsoid for calculation.
+
+    Parameters
+    ----------
+    station_name1 :str)
+        name of first GPS station
+    station_name2 :str)
+        name of second GPS station
+
+    Returns:
+        float: distance (in meters)
+    """
+    from pyproj import Geod
+
+    lon1, lat1 = station_lonlat(station_name1)
+    lon2, lat2 = station_lonlat(station_name2)
+
+    g = Geod(ellps="WGS84")
+
+    return g.line_length([lon1, lon2], [lat1, lat2], radians=False)
+
+
+if __name__ == "__main__":
+    # Example usage
+    station_name = "NMHB"
+    download_station_data(station_name)
+    df = load_station_enu(station_name, start_date="2020-01-01", end_date="2021-12-31")
+    logger.info(df.head())
+    lon, lat = station_lonlat(station_name)
+    logger.info(f"Station {station_name} location: {lon}, {lat}")
