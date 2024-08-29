@@ -10,6 +10,7 @@ Note: ^^ This file is stored in the `STATION_LLH_FILE`
 3. Map of stations: http://geodesy.unr.edu/NGLStationPages/gpsnetmap/GPSNetMap.html
 
 """
+
 from __future__ import annotations
 
 import datetime
@@ -46,14 +47,15 @@ GPS_XYZ_BASE_URL = "http://geodesy.unr.edu/gps_timeseries/txyz/IGS14/{station}.t
 GPS_XYZ_FILE = GPS_XYZ_BASE_URL.split("/")[-1]
 
 GPS_DIR = get_cache_dir(force_posix=True)
+GPS_DIR.mkdir(exist_ok=True, parents=True)
 
 # These lists get update occasionally... to keep fresh, download one for current day
 # old ones will be removed upon new download
 STATION_LLH_URL = "http://geodesy.unr.edu/NGLStationPages/llh.out"
-STATION_LLH_FILE = GPS_DIR / "station_llh_all_{today}.csv"
+STATION_LLH_FILE = str(GPS_DIR / "station_llh_all_{today}.csv")
 
 STATION_XYZ_URL = "http://geodesy.unr.edu/NGLStationPages/DataHoldings.txt"
-STATION_XYZ_FILE = GPS_DIR / "station_xyz_all_{today}.csv"
+STATION_XYZ_FILE = str(GPS_DIR / "station_xyz_all_{today}.csv")
 
 
 def load_station_enu(
@@ -120,6 +122,38 @@ def load_station_enu(
         clean_df[["east", "north", "up"]] -= start_val
     # Finally, make the 'date' column a DateIndex
     return clean_df.set_index("date")
+
+
+@cache
+def read_station_llas(filename=None, to_geodataframe=False):
+    """Read in the name, lat, lon, alt list of gps stations
+
+    Assumes file is a space-separated with "name,lat,lon,alt" as columns
+    """
+    today = datetime.date.today().strftime("%Y%m%d")
+    filename = filename or STATION_LLH_FILE.format(today=today)
+
+    lla_path = os.path.join(GPS_DIR, filename)
+    _remove_old_lists(lla_path)
+    logger.debug("Searching %s for gps data" % filename)
+
+    try:
+        df = pd.read_csv(lla_path, sep=r"\s+", engine="c", header=None)
+    except FileNotFoundError:
+        logger.info("Downloading from %s to %s", STATION_LLH_URL, lla_path)
+        download_station_locations(lla_path, STATION_LLH_URL)
+        df = pd.read_csv(lla_path, sep=r"\s+", engine="c", header=None)
+
+    df.columns = ["name", "lat", "lon", "alt"]
+    # Make sure the longitude is wrapped between -180 and 180
+    # It comes in the range (-360, 0)
+    df.loc[:, "lon"] = df.lon - (np.round(df.lon / (360)) * 360)
+    if to_geodataframe:
+        import geopandas as gpd
+
+        return gpd.GeoDataFrame(df, geometry=gpd.points_from_xy(df.lon, df.lat))
+    else:
+        return df
 
 
 def _clean_gps_df(df, start_date=None, end_date=None, coords="enu"):
@@ -193,49 +227,17 @@ def load_station_xyz(
     return clean_df.set_index("date")
 
 
-@cache()
-def read_station_llas(filename=None, to_geodataframe=False):
-    """Read in the name, lat, lon, alt list of gps stations
-
-    Assumes file is a space-separated with "name,lat,lon,alt" as columns
-    """
-    today = datetime.date.today().strftime("%Y%m%d")
-    filename = filename or STATION_LLH_FILE.format(today=today)
-
-    lla_path = os.path.join(GPS_DIR, filename)
-    _remove_old_lists(lla_path)
-    logger.debug("Searching %s for gps data" % filename)
-
-    try:
-        df = pd.read_csv(lla_path, sep=r"\s+", engine="c", header=None)
-    except FileNotFoundError:
-        logger.info("Downloading from %s to %s", STATION_LLH_URL, lla_path)
-        download_station_locations(lla_path, STATION_LLH_URL)
-        df = pd.read_csv(lla_path, sep=r"\s+", engine="c", header=None)
-
-    df.columns = ["name", "lat", "lon", "alt"]
-    # Make sure the longitude is wrapped between -180 and 180
-    # It comes in the range (-360, 0)
-    df.loc[:, "lon"] = df.lon - (np.round(df.lon / (360)) * 360)
-    if to_geodataframe:
-        import geopandas as gpd
-
-        return gpd.GeoDataFrame(df, geometry=gpd.points_from_xy(df.lon, df.lat))
-    else:
-        return df
-
-
 def _remove_old_lists(lla_path):
     today = datetime.date.today().strftime("%Y%m%d")
     gps_dir = Path(lla_path).parent
     station_list_files = sorted(gps_dir.glob("station_*"))
-    files_to_delete = [f for f in station_list_files if today not in f]
+    files_to_delete = [f for f in station_list_files if today not in str(f)]
     for f in files_to_delete:
         logger.info("Removing old station list file: %s", f)
         f.unlink()
 
 
-@cache()
+@cache
 def read_station_xyzs(filename=None):
     """Read in the name, X, Y, Z position of gps stations."""
     today = datetime.date.today().strftime("%Y%m%d")
