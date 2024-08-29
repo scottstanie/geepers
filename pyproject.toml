@@ -29,7 +29,13 @@ license = { file = "LICENSE.txt" }
 # see section: setuptools_scm
 # https://setuptools.pypa.io/en/latest/userguide/pyproject_config.html#dynamic-metadata
 # dependencies will be read from text files
-dynamic = ["version", "dependencies", "optional-dependencies"]
+dynamic = ["version", "optional-dependencies"]
+
+dependencies = [
+"pyproj",
+"shapely",
+"rasterio",
+]
 
 [project.urls]
 Homepage = "https://github.com/isce-framework/geepers"
@@ -41,8 +47,6 @@ Changelog = "https://github.com/isce-framework/geepers/releases"
 [project.scripts]
 geepers = "geepers.cli:main"
 
-[tool.setuptools.dynamic]
-dependencies = { file = ["requirements.txt"] }
 
 # extra requirements: `pip install .[docs]` or `pip install .[docs]`
 [tool.setuptools.dynamic.optional-dependencies.docs]
@@ -70,7 +74,7 @@ preview = true
 
 [tool.isort]
 profile = "black"
-known_first_party = [" geepers"]
+known_first_party = ["geepers"]
 
 [tool.mypy]
 python_version = "3.9"

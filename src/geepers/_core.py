@@ -19,20 +19,18 @@ import re
 from dataclasses import dataclass, field
 from functools import lru_cache
 from glob import glob
-from pathlib import Path
-
-import h5py
-import matplotlib.dates as mdates
-import numpy as np
-import pandas as pd
-import requests
-import xarray as xr
 
 import apertools.latlon
 import apertools.los
 import apertools.plotting
 import apertools.sario
 import apertools.utils
+import h5py
+import matplotlib.dates as mdates
+import numpy as np
+import pandas as pd
+import requests
+import xarray as xr
 from apertools.log import get_log
 from apertools.sario import LOS_FILENAME
 

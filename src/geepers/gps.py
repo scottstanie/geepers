@@ -16,15 +16,22 @@ import numpy as np
 import pandas as pd
 import rasterio
 import requests
-from shapely.geometry import Point, box
+from shapely.geometry import box
 
 from geepers import utils
 
-from ._types import Bbox, PathOrStr
+from ._types import PathOrStr
+
+__all__ = [
+    "load_station_enu",
+    "read_station_llas",
+    "get_stations_within_image",
+]
 
 # Constants
 GPS_BASE_URL = "http://geodesy.unr.edu/gps_timeseries/tenv3/IGS14/{station}.tenv3"
 GPS_DIR = utils.get_cache_dir()
+GPS_DIR.mkdir(exist_ok=True, parents=True)
 STATION_LLH_URL = "http://geodesy.unr.edu/NGLStationPages/llh.out"
 STATION_LLH_FILE = str(GPS_DIR / "station_llh_all_{today}.csv")
 
