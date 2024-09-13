@@ -1,8 +1,7 @@
-from __future__ import annotations
-
-import logging
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import ExitStack
 from dataclasses import dataclass
+from pathlib import Path
 from typing import (
     TYPE_CHECKING,
     Optional,
@@ -13,18 +12,13 @@ from typing import (
 
 import numpy as np
 import rasterio as rio
+import rasterio.windows
 from numpy.typing import ArrayLike
+from rasterio.vrt import WarpedVRT
 
 from ._types import PathOrStr
 
-logger = logging.getLogger(__name__)
-
-__all__ = [
-    "DatasetReader",
-    "StackReader",
-    "RasterReader",
-    "RasterStackReader",
-]
+__all__ = ["DatasetReader", "StackReader", "RasterReader", "RasterStackReader"]
 
 
 if TYPE_CHECKING:
@@ -180,8 +174,6 @@ class RasterReader(DatasetReader):
         return self[:, :]
 
     def __getitem__(self, key: tuple[Index, ...], /) -> np.ndarray:
-        import rasterio.windows
-
         if key is ... or key == ():
             key = (slice(None), slice(None))
 
@@ -206,6 +198,79 @@ class RasterReader(DatasetReader):
         # manually slice the output array.
         r_step, c_step = r_slice.step or 1, c_slice.step or 1
         return out_masked[::r_step, ::c_step].squeeze()
+
+    def from_lon_lat(self, lons, lats) -> np.ndarray:
+        """Get pixel values from a raster file for given longitudes and latitudes.
+
+        Parameters
+        ----------
+        raster_path : str
+            Path to the raster file.
+        lons : float
+            Longitude of the points.
+        lats : float
+            Latitude of the points.
+
+        Returns
+        -------
+        np.ndarray
+            pixel_values at the nearest point
+
+        """
+        with ExitStack() as stack:
+            if not self.keep_open:
+                src = stack.enter_context(rio.open(self.filename))
+            else:
+                src = self._src
+
+            lon_list = [lons] if np.isscalar(lons) else lons
+            lat_list = [lats] if np.isscalar(lats) else lats
+
+            with WarpedVRT(src, crs="EPSG:4326") as vrt:
+                return np.array(list(vrt.sample(xy=zip(lon_list, lat_list))))
+
+    def read_window(self, lon: float, lat: float, buffer_pixels: int = 0, op=round):
+        """Get a window of pixel values for a given longitude and latitude.
+
+        Parameters
+        ----------
+        lon : float
+            Longitude of the central point.
+        lat : float
+            Latitude of the central point.
+        buffer_pixels : int
+            Number of pixels to buffer around the central point.
+        op : callable, optional
+            Operation to use when calculating the central pixel. Default is round.
+            Options are "round", "math.floor", "math.ceil"
+
+        Returns
+        -------
+        np.ndarray
+            Window of pixel values around the specified point.
+
+        """
+        with ExitStack() as stack:
+            if not self.keep_open:
+                src = stack.enter_context(rio.open(self.filename))
+            else:
+                src = self._src
+
+            # Transform the lon/lat to the raster's CRS
+            x, y = rio.warp.transform("EPSG:4326", src.crs, [lon], [lat])
+
+            # Get the row and column of the central pixel
+            row, col = src.index(x[0], y[0], op=op)
+
+            # Calculate the window boundaries
+            window = rasterio.windows.Window(
+                col - buffer_pixels,
+                row - buffer_pixels,
+                2 * buffer_pixels + 1,
+                2 * buffer_pixels + 1,
+            )
+
+            return src.read(self.band, window=window)
 
 
 def _read_3d(
@@ -277,6 +342,8 @@ class RasterStackReader(BaseStackReader):
 
     """
 
+    readers: Sequence[RasterReader]
+
     @classmethod
     def from_file_list(
         cls,
@@ -285,7 +352,7 @@ class RasterStackReader(BaseStackReader):
         keep_open: bool = False,
         num_threads: int = 1,
         nodata: Optional[float] = None,
-    ) -> RasterStackReader:
+    ) -> "RasterStackReader":
         """Create a RasterStackReader from a list of files.
 
         Parameters
@@ -321,6 +388,19 @@ class RasterStackReader(BaseStackReader):
         if len(nds) == 1:
             nodata = nds.pop()
         return cls(file_list, readers, num_threads=num_threads, nodata=nodata)
+
+    def from_lon_lat(self, lons, lats) -> np.ndarray:
+        """Read in raster values located at `lons`, `lats`."""
+        return np.array([reader.from_lon_lat(lons, lats) for reader in self.readers])
+
+    def read_window(self, lon: float, lat: float, buffer_pixels: int = 0, op=round):
+        """Get a window of pixel values for a given longitude and latitude."""
+        return np.array(
+            [
+                reader.read_window(lon, lat, buffer_pixels=buffer_pixels, op=op)
+                for reader in self.readers
+            ]
+        )
 
 
 def _ensure_slices(rows: Index, cols: Index) -> tuple[slice, slice]:
