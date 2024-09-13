@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import ExitStack
 from dataclasses import dataclass
@@ -199,7 +201,7 @@ class RasterReader(DatasetReader):
         r_step, c_step = r_slice.step or 1, c_slice.step or 1
         return out_masked[::r_step, ::c_step].squeeze()
 
-    def from_lon_lat(self, lons, lats) -> np.ndarray:
+    def read_lon_lat(self, lons, lats, masked: bool = False) -> np.ndarray:
         """Get pixel values from a raster file for given longitudes and latitudes.
 
         Parameters
@@ -210,6 +212,9 @@ class RasterReader(DatasetReader):
             Longitude of the points.
         lats : float
             Latitude of the points.
+        masked : bool, optional
+            If True, reads in data as a MaskedArray, masking nodata values.
+            Default is False.
 
         Returns
         -------
@@ -227,9 +232,18 @@ class RasterReader(DatasetReader):
             lat_list = [lats] if np.isscalar(lats) else lats
 
             with WarpedVRT(src, crs="EPSG:4326") as vrt:
-                return np.array(list(vrt.sample(xy=zip(lon_list, lat_list))))
+                return np.array(
+                    list(vrt.sample(xy=zip(lon_list, lat_list), masked=masked))
+                )
 
-    def read_window(self, lon: float, lat: float, buffer_pixels: int = 0, op=round):
+    def read_window(
+        self,
+        lon: float,
+        lat: float,
+        buffer_pixels: int = 0,
+        op=round,
+        masked: bool = False,
+    ):
         """Get a window of pixel values for a given longitude and latitude.
 
         Parameters
@@ -243,6 +257,9 @@ class RasterReader(DatasetReader):
         op : callable, optional
             Operation to use when calculating the central pixel. Default is round.
             Options are "round", "math.floor", "math.ceil"
+        masked : bool, optional
+            If True, reads in data as a MaskedArray, masking nodata values.
+            Default is False.
 
         Returns
         -------
@@ -270,7 +287,7 @@ class RasterReader(DatasetReader):
                 2 * buffer_pixels + 1,
             )
 
-            return src.read(self.band, window=window)
+            return src.read(self.band, window=window, masked=masked)
 
 
 def _read_3d(
@@ -389,15 +406,26 @@ class RasterStackReader(BaseStackReader):
             nodata = nds.pop()
         return cls(file_list, readers, num_threads=num_threads, nodata=nodata)
 
-    def from_lon_lat(self, lons, lats) -> np.ndarray:
+    def read_lon_lat(self, lons, lats, masked: bool = False) -> np.ndarray:
         """Read in raster values located at `lons`, `lats`."""
-        return np.array([reader.from_lon_lat(lons, lats) for reader in self.readers])
+        return np.array(
+            [reader.read_lon_lat(lons, lats, masked=masked) for reader in self.readers]
+        )
 
-    def read_window(self, lon: float, lat: float, buffer_pixels: int = 0, op=round):
+    def read_window(
+        self,
+        lon: float,
+        lat: float,
+        buffer_pixels: int = 0,
+        op=round,
+        masked: bool = False,
+    ):
         """Get a window of pixel values for a given longitude and latitude."""
         return np.array(
             [
-                reader.read_window(lon, lat, buffer_pixels=buffer_pixels, op=op)
+                reader.read_window(
+                    lon, lat, buffer_pixels=buffer_pixels, op=op, masked=masked
+                )
                 for reader in self.readers
             ]
         )
@@ -431,3 +459,8 @@ def _unpack_3d_slices(key: tuple[Index, ...]) -> tuple[Index, slice, slice]:
     # convert the rows/cols to slices
     r_slice, c_slice = _ensure_slices(rows, cols)
     return bands, r_slice, c_slice
+
+
+def get_raster_units(filename: PathOrStr, band: int = 1) -> str | None:
+    with rio.open(filename) as src:
+        return src.units[band - 1]

@@ -202,7 +202,7 @@ def load_station_enu(
     start_date: str | datetime.date | None = None,
     end_date: str | datetime.date | None = None,
     download_if_missing: bool = True,
-    zero_by: str = "mean",
+    zero_by: str = "mean",  # TODO: remove, or change to Enum
 ) -> pd.DataFrame:
     """Load GPS station data in the east-north-up (ENU) coordinate system.
 
