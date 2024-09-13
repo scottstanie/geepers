@@ -351,7 +351,8 @@ def read_station_llas(
     filename = filename or STATION_LLH_FILE.format(today=today)
     lla_path = Path(filename)
 
-    utils.remove_old_files(lla_path)
+    # utils.remove_old_files(lla_path)
+    # TODO: remove based on creation time
 
     try:
         df = pd.read_csv(lla_path, sep=r"\s+", engine="c", header=None)

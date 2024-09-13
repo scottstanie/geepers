@@ -1,7 +1,7 @@
 import datetime
 from os import PathLike
 from pathlib import Path
-from typing import TYPE_CHECKING, NamedTuple
+from typing import TYPE_CHECKING, NamedTuple, TypeVar
 
 # Some classes are declared as generic in stubs, but not at runtime.
 # In Python 3.9 and earlier, os.PathLike is not subscriptable, results in runtime error
@@ -15,6 +15,9 @@ else:
 
 PathOrStr = str | Path | PathLikeStr
 DateOrDatetime = datetime.datetime | datetime.date
+
+
+PathLikeT = TypeVar("PathLikeT", bound=PathLikeStr)
 
 
 class ReferencePoint(NamedTuple):

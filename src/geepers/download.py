@@ -66,7 +66,6 @@ def load_station_enu(
     end_date=None,
     download_if_missing=True,
     zero_by="mean",
-    to_cm=True,
 ):
     """Loads one gps station's ENU data since start_date until end_date as a dataframe
 
@@ -107,12 +106,6 @@ def load_station_enu(
         clean_df = _clean_gps_df(df, start_date, end_date)
         # os.remove(gps_data_file)
         # logger.info(f"force removed {gps_data_file}")
-
-    # multiplier = 100  to_cm:
-
-    if to_cm:
-        # logger.info("Converting %s GPS to cm" % station_name)
-        clean_df[["east", "north", "up"]] = 100 * clean_df[["east", "north", "up"]]
 
     if zero_by.lower() == "mean":
         mean_val = clean_df[["east", "north", "up"]].mean()
@@ -191,7 +184,7 @@ def load_station_xyz(
             download_station_data(station_name, coords="xyz")
         else:
             raise ValueError(
-                "{gps_data_file} does not exist, download_if_missing = False"
+                f"{gps_data_file} does not exist, download_if_missing = False"
             )
 
     if end_date is None:
