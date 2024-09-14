@@ -5,6 +5,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+import typer
 from numpy.typing import ArrayLike
 from opera_utils import get_dates
 from tqdm.auto import tqdm
@@ -86,10 +87,11 @@ def _get_cli_args():
         description="Process InSAR time series and compare with GPS data."
     )
     parser.add_argument(
-        "timeseries_files", nargs="+", type=str, help="Path to InSAR time series files"
+        "timeseries_files", nargs="+", help="Path to InSAR time series files"
     )
+    parser.add_argument("--los-enu-file", help="Path to LOS ENU file", required=True)
     parser.add_argument(
-        "--los-enu-file", type=str, help="Path to LOS ENU file", required=True
+        "--output-dir", type=Path, help="Directory to save CSVs", default="GPS"
     )
     parser.add_argument(
         "--file_date_fmt",
@@ -100,14 +102,44 @@ def _get_cli_args():
     return parser.parse_args()
 
 
-def main():
-    args = _get_cli_args()
+main = typer.Typer()
+from typing_extensions import Annotated
+
+
+@main.command()
+def run(
+    timeseries_files: Annotated[
+        list[Path], typer.Argument(help="Path to InSAR time series files")
+    ],
+    los_enu_file: Annotated[Path, typer.Option(help="Path to LOS ENU file")],
+    output_dir: Annotated[Path, typer.Option(help="Directory to save CSVs")] = Path(
+        "GPS"
+    ),
+    file_date_fmt: Annotated[
+        str, typer.Option(help="Date format in filenames")
+    ] = "%Y%m%d",
+    reference_station: Annotated[
+        str, typer.Option(help="Reference GPS station name")
+    ] = None,
+):
+    """
+    Process InSAR time series and compare with GPS data.
+    """
+
+    # Rest of your main function logic goes here...
+    typer.echo(f"Processing {len(timeseries_files)} time series files")
+    typer.echo(f"Using LOS ENU file: {los_enu_file}")
+    typer.echo(f"Output directory: {output_dir}")
+    typer.echo(f"File date format: {file_date_fmt}")
+    if reference_station:
+        typer.echo(f"Reference station: {reference_station}")
 
     # Initialize RasterStackReader
-    reader = geepers.io.RasterStackReader.from_file_list(args.timeseries_files)
+    reader = geepers.io.RasterStackReader.from_file_list(timeseries_files)
+    output_dir.mkdir(exist_ok=True)
 
     # Parse dates from filenames
-    file_dates = [get_dates(f, fmt=args.file_date_fmt) for f in args.timeseries_files]
+    file_dates = [get_dates(f, fmt=file_date_fmt) for f in timeseries_files]
     ref_sec_dates = np.array(file_dates)
     start_date, end_date = np.min(ref_sec_dates), np.max(ref_sec_dates)
     sec_date_series = pd.to_datetime(ref_sec_dates[:, 1])
@@ -117,7 +149,7 @@ def main():
         )
 
     # Get GPS stations within the image
-    df_gps_stations = geepers.gps.get_stations_within_image(args.timeseries_files[0])
+    df_gps_stations = geepers.gps.get_stations_within_image(timeseries_files[0])
     df_gps_stations.set_index("name", inplace=True)
     num_stations = len(df_gps_stations)
 
@@ -133,14 +165,32 @@ def main():
     )
 
     # Load LOS ENU data
-    print("??")
-    print(args.los_enu_file)
-    los_reader = geepers.io.RasterReader.from_file(args.los_enu_file)
+    los_reader = geepers.io.RasterReader.from_file(los_enu_file)
+    # Process GPS data for each station
+    starting_points = 10
+    station_to_los_gps_data: dict[str, pd.DataFrame] = {}
+    for station_row, df in tqdm(
+        zip(df_gps_stations.itertuples(), df_gps_list),
+        total=num_stations,
+        desc="Projecting GPS to LOS",
+    ):
+        enu_vec = los_reader.read_lon_lat(
+            station_row.lon, station_row.lat, masked=True
+        ).ravel()
+        if (enu_vec == 0).all():
+            warnings.warn(f"{station_row.Index} does not have LOS data")
+        e, n, u = enu_vec
+        df["los_gps"] = df.east * e + df.north * n + df.up * u
+        df["los_gps"] -= df["los_gps"][:starting_points].mean()
+        station_to_los_gps_data[station_row.Index] = df[["los_gps"]]
 
     # Process InSAR data for each station
     station_to_insar_data: dict[str, pd.DataFrame] = {}
-    print("???")
-    for station_row in tqdm(df_gps_stations.itertuples(), total=num_stations):
+    for station_row in tqdm(
+        df_gps_stations.itertuples(),
+        total=num_stations,
+        desc="Loading InSAR at station locations",
+    ):
         los_insar_rad = (
             reader.read_lon_lat(station_row.lon, station_row.lat, masked=True)
             .ravel()
@@ -153,22 +203,6 @@ def main():
         station_to_insar_data[station_row.Index] = pd.DataFrame(
             index=sec_date_series, data={"los_insar": los_insar}
         )
-
-    # Process GPS data for each station
-    starting_points = 10
-    station_to_los_gps_data: dict[str, pd.DataFrame] = {}
-    for station_row, df in tqdm(
-        zip(df_gps_stations.itertuples(), df_gps_list), total=num_stations
-    ):
-        enu_vec = los_reader.read_lon_lat(
-            station_row.lon, station_row.lat, masked=True
-        ).ravel()
-        if (enu_vec == 0).all():
-            warnings.warn(f"{station_row.Index} does not have LOS data")
-        e, n, u = enu_vec
-        df["los_gps"] = df.east * e + df.north * n + df.up * u
-        df["los_gps"] -= df["los_gps"][:starting_points].mean()
-        station_to_los_gps_data[station_row.Index] = df[["los_gps"]]
 
     # Merge GPS and InSAR data
     station_to_merged_df: dict[str, pd.DataFrame] = {}
@@ -185,20 +219,18 @@ def main():
     # Create tidy DataFrame
     combined_df = create_tidy_df(station_to_merged_df)
     # Save results
-    output_dir = Path("results")
-    output_dir.mkdir(exist_ok=True)
     combined_df.to_csv(output_dir / "combined_data.csv", index=False)
 
     # Compare relative GPS and InSAR if reference station is provided
-    if args.reference_station:
+    if reference_station:
         compare_results = compare_relative_gps_insar(
-            station_to_merged_df, reference_station=args.reference_station
+            station_to_merged_df, reference_station=reference_station
         )
         print("Relative comparison results:")
         print(compare_results)
         compare_results.to_csv(output_dir / "relative_comparison.csv", index=False)
 
-    logger.info(f"Results saved in {output_dir}")
+    typer.echo(f"Results saved in {output_dir}")
 
 
 if __name__ == "__main__":
