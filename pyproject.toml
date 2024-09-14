@@ -80,10 +80,6 @@ known_first_party = ["geepers"]
 python_version = "3.9"
 ignore_missing_imports = true
 
-
-[tool.pydocstyle]
-ignore = "D100,D102,D104,D105,D106,D107,D203,D204,D213,D413"
-
 [tool.pytest.ini_options]
 doctest_optionflags = "NORMALIZE_WHITESPACE NUMBER"
 addopts = "  --cov=geepers  --doctest-modules --randomly-seed=1234 --ignore=scripts --ignore=docs"
