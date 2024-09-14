@@ -32,9 +32,10 @@ license = { file = "LICENSE.txt" }
 dynamic = ["version", "optional-dependencies"]
 
 dependencies = [
-"pyproj",
-"shapely",
-"rasterio",
+  "pyproj",
+  "shapely",
+  "rasterio",
+  "typer",
 ]
 
 [project.urls]
