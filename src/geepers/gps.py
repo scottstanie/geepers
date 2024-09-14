@@ -42,7 +42,7 @@ def get_stations_within_image(
     filename: str,
     bad_vals: Set[float] | None = None,
     mask_invalid: bool = True,
-    exclude_stations: Sequence[str] = None,
+    exclude_stations: Sequence[str] | None = None,
 ) -> gpd.GeoDataFrame:
     """
     Find GPS stations within a given geocoded image.
