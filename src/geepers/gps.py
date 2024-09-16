@@ -284,6 +284,11 @@ def _clean_gps_df(
     ------
     ValueError
         If an invalid coordinate system is specified.
+
+    Notes
+    ----------
+    See here for .tenv3 format:
+    http://geodesy.unr.edu/gps_timeseries/README_tenv3.txt
     """
     df["date"] = pd.to_datetime(df["YYMMMDD"], format="%y%b%d")
 
@@ -293,7 +298,10 @@ def _clean_gps_df(
         df = df[df["date"] <= pd.to_datetime(end_date)]
 
     if coords == "enu":
+        df_integer = df[["_e0(m)", "____n0(m)", "u0(m)"]]
         df_out = df[["date", "__east(m)", "_north(m)", "____up(m)"]]
+        # Combine the integer e/n/u part with the fractional
+        df_out[["__east(m)", "_north(m)", "____up(m)"]].values += df_integer.values
     elif coords == "xyz":
         df_out = df[["date", "x", "y", "z"]]
     else:

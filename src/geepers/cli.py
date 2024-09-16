@@ -185,6 +185,9 @@ def run(
         station_to_los_gps_data[station_row.Index] = df[["los_gps"]]
 
     # Process InSAR data for each station
+    # TODO: this is slow for large number of dates
+    # Should probably pass all lons/lats, so that readers can each fetch all,
+    # rather than each reader gets 1 and iterate through readers
     station_to_insar_data: dict[str, pd.DataFrame] = {}
     for station_row in tqdm(
         df_gps_stations.itertuples(),

@@ -101,6 +101,8 @@ def load_station_enu(
 
     # Check that we have up to date data
     if (clean_df["date"].max() < end_date) and download_if_missing:
+        # Force a re-download attempt
+        # XXX there should be a better way to check update times?
         download_station_data(station_name)
         df = pd.read_csv(gps_data_file, header=0, sep=r"\s+", engine="c")
         clean_df = _clean_gps_df(df, start_date, end_date)
