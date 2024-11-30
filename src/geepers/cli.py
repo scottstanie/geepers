@@ -1,4 +1,3 @@
-import argparse
 import logging
 import warnings
 from pathlib import Path
@@ -10,6 +9,7 @@ from numpy.typing import ArrayLike
 from opera_utils import get_dates
 from tqdm.auto import tqdm
 from tqdm.contrib.concurrent import thread_map
+from typing_extensions import Annotated
 
 import geepers.gps
 import geepers.io
@@ -17,6 +17,9 @@ from geepers._types import PathOrStr
 from geepers.constants import SENTINEL_1_WAVELENGTH
 
 logger = logging.getLogger(__name__)
+
+
+main = typer.Typer()
 
 
 def create_tidy_df(station_to_merged_df):
@@ -80,30 +83,6 @@ def compare_relative_gps_insar(
         results.append(station_result)
 
     return pd.concat(results, ignore_index=True)
-
-
-def _get_cli_args():
-    parser = argparse.ArgumentParser(
-        description="Process InSAR time series and compare with GPS data."
-    )
-    parser.add_argument(
-        "timeseries_files", nargs="+", help="Path to InSAR time series files"
-    )
-    parser.add_argument("--los-enu-file", help="Path to LOS ENU file", required=True)
-    parser.add_argument(
-        "--output-dir", type=Path, help="Directory to save CSVs", default="GPS"
-    )
-    parser.add_argument(
-        "--file_date_fmt",
-        default="%Y%m%d",
-        help="Date format in filenames (default: %(default)s)",
-    )
-    parser.add_argument("--reference_station", help="Reference GPS station name")
-    return parser.parse_args()
-
-
-main = typer.Typer()
-from typing_extensions import Annotated
 
 
 @main.command()
