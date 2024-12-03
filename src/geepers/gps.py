@@ -299,9 +299,19 @@ def _clean_gps_df(
 
     if coords == "enu":
         df_integer = df[["_e0(m)", "____n0(m)", "u0(m)"]]
-        df_out = df[["date", "__east(m)", "_north(m)", "____up(m)"]]
+        df_out = df[
+            [
+                "date",
+                "__east(m)",
+                "_north(m)",
+                "____up(m)",
+                "sig_e(m)",
+                "sig_n(m)",
+                "sig_u(m)",
+            ]
+        ]
         # Combine the integer e/n/u part with the fractional
-        df_out[["__east(m)", "_north(m)", "____up(m)"]].values += df_integer.values
+        df_out.loc[:, ["__east(m)", "_north(m)", "____up(m)"]] += df_integer.values
     elif coords == "xyz":
         df_out = df[["date", "x", "y", "z"]]
     else:

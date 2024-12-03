@@ -17,6 +17,8 @@ import rasterio as rio
 import rasterio.windows
 from numpy.typing import ArrayLike
 from rasterio.vrt import WarpedVRT
+from tqdm.auto import tqdm
+from tqdm.contrib.concurrent import thread_map
 
 from ._types import PathOrStr
 
@@ -406,11 +408,21 @@ class RasterStackReader(BaseStackReader):
             nodata = nds.pop()
         return cls(file_list, readers, num_threads=num_threads, nodata=nodata)
 
-    def read_lon_lat(self, lons, lats, masked: bool = False) -> np.ndarray:
+    def read_lon_lat(
+        self, lons, lats, masked: bool = False, max_workers: int = 4
+    ) -> np.ndarray:
         """Read in raster values located at `lons`, `lats`."""
-        return np.array(
-            [reader.read_lon_lat(lons, lats, masked=masked) for reader in self.readers]
+
+        def _read_single(reader):
+            return reader.read_lon_lat(lons, lats, masked=masked)
+
+        results = thread_map(
+            _read_single,
+            self.readers,
+            max_workers=max_workers,
+            desc="Reading points from time series",
         )
+        return np.array(list(results))
 
     def read_window(
         self,
