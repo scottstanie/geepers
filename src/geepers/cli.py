@@ -297,8 +297,8 @@ def process_insar_data(
             index=sec_date_series,
             data={
                 "los_insar": los_insar[:, i],
-                "similarity": similarity,
-                "temporal_coherence": temp_coh,
+                "similarity": similarity[i],
+                "temporal_coherence": temp_coh[i],
             },
         )
 
