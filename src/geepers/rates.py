@@ -6,6 +6,12 @@ import pandas as pd
 
 from .midas import MidasResult, midas
 
+try:
+    from ._robust_fit import robust_linear_fit
+except ImportError as e:
+    print(f"Failed to import `robust_linear_fit`: e")
+    robust_linear_fit
+
 EMPTY_MIDAS = MidasResult(np.nan, np.nan, np.nan, np.nan, np.nan, np.array([]))
 
 
@@ -48,7 +54,7 @@ def calculate_rates(
         time_span_years = years.iloc[-1] - years.iloc[0]
 
         # Start with nans for rates
-        num_gps = gps_rate = gps_rate_l2 = insar_rate = insar_rate_l2 = np.nan
+        num_gps = gps_velocity_l2 = insar_velocity = insar_velocity_l2 = np.nan
         tcoh = similarity = np.nan
         const = 1000 if to_mm else 1
 
@@ -58,47 +64,38 @@ def calculate_rates(
             mask = ~group["los_gps"].isna()
             if sum(mask) > 2:  # Need at least 3 points for meaningful rate
                 # Calculate rates using least squares fit
-                gps_rate_l2 = (
+                gps_velocity_l2 = (
                     np.polyfit(years[mask], group["los_gps"][mask], 1)[0] * const
                 )
                 gps_midas = const * _get_group_midas(group, "los_gps")
                 num_gps = len(group["los_gps"][mask])
-                gps_rate = gps_rate_l2
 
         # InSAR rate
-        insar_midas = EMPTY_MIDAS
+        # insar_midas = EMPTY_MIDAS
         if not group["los_insar"].isna().all():
             mask = ~group["los_insar"].isna()
             if sum(mask) > 2:  # Need at least 3 points for meaningful rate
-                insar_rate_l2 = (
-                    np.polyfit(years[mask], group["los_insar"][mask], 1)[0] * const
-                )
-                insar_rate = insar_rate_l2
-                # insar_rate = (
-                #     robust_linear_fit(
-                #         years[mask].values, group["los_insar"][mask].values
-                #     )[0]
-                #     * const
-                # )
-                insar_midas = const * _get_group_midas(group, "los_insar")
+                x, y = np.array(years[mask]), np.array(group["los_insar"][mask])
+                insar_velocity_l2 = np.polyfit(x, y, 1)[0] * const
+                insar_velocity = const * robust_linear_fit(x, y)[0]
+                # insar_midas = const * _get_group_midas(group, "los_insar")
 
-        if not np.isnan(insar_rate):
+        if not np.isnan(insar_velocity):
             tcoh = group["temporal_coherence"].dropna().iloc[0]
             similarity = group["similarity"].dropna().iloc[0]
 
-        midas_outputs = _dump_midas(gps_midas, prefix="gps_") | _dump_midas(
-            insar_midas, prefix="insar_"
-        )
-        # breakpoint()
+        midas_outputs = _dump_midas(gps_midas, prefix="gps_")
+        # midas_outputs |= _dump_midas(insar_midas, prefix="insar_")
         return pd.Series(
             {
-                "difference": float(insar_rate - gps_rate),
+                "difference": float(insar_velocity - gps_midas.velocity),
+                "insar_velocity": float(insar_velocity),
+                "insar_velocity_l2": float(insar_velocity_l2),
                 "temporal_coherence": tcoh,
                 "similarity": similarity,
                 "num_gps_points": num_gps,
                 "gps_time_span_years": time_span_years,
-                "gps_rate_l2": gps_rate_l2,
-                "insar_rate_l2": np.asarray(insar_rate_l2),
+                "gps_velocity_l2": gps_velocity_l2,
                 **midas_outputs,
             }
         )

@@ -107,7 +107,7 @@ def create_rate_comparison_plot(
     Parameters
     ----------
     rates : pd.DataFrame
-        DataFrame with columns: station, gps_rate, insar_rate
+        DataFrame with columns: station, gps_velocity, insar_velocity
 
     Returns
     -------
@@ -119,22 +119,21 @@ def create_rate_comparison_plot(
     plt.style.use("seaborn-v0_8-paper")
 
     # Calculate correlation coefficient and RMSE
-    corr_coef = stats.pearsonr(rates.insar_rate, rates.gps_rate)[0]
-    rmse = np.sqrt(np.mean((rates.gps_rate - rates.insar_rate) ** 2))
+    corr_coef = stats.pearsonr(rates.insar_velocity, rates.gps_velocity)[0]
+    rmse = np.sqrt(np.mean((rates.gps_velocity - rates.insar_velocity) ** 2))
 
     # Create the figure
     fig, ax = plt.subplots(figsize=(6, 5), dpi=150)
 
     # Plot the scatter points
     scatter_img = ax.scatter(
-        rates.insar_rate,
-        rates.gps_rate,
+        rates.insar_velocity,
+        rates.gps_velocity,
         # color="#2b8cbe",
         c=rates[quality_column],
         cmap=quality_cmap,
         alpha=0.8,
         s=40,
-        label=f"Corr coeff: {corr_coef:.2f}\nRMSE: {rmse:.1f} mm/yr",
     )
 
     # Plot the 1:1 line
@@ -165,19 +164,17 @@ def create_rate_comparison_plot(
     ax.xaxis.set_minor_locator(MultipleLocator(5))
     ax.yaxis.set_minor_locator(MultipleLocator(5))
 
-    # # Add legend
-    # ax.legend(
-    #     frameon=True,
-    #     facecolor="white",
-    #     edgecolor="none",
-    #     bbox_to_anchor=(0.02, 0.98),
-    #     loc="upper left",
-    # )
-    fig.colorbar(scatter_img, ax=ax)
-
-    # Adjust layout
-    plt.tight_layout()
-
+    props = dict(boxstyle="round", facecolor="wheat", alpha=0.5)
+    label = f"Corr coeff: {corr_coef:.2f}\nRMSE: {rmse:.1f} mm/yr"
+    ax.text(
+        x=0.05,
+        y=0.95,
+        s=label,
+        transform=ax.transAxes,
+        verticalalignment="top",
+        bbox=props,
+    )
+    fig.colorbar(scatter_img, ax=ax, label=quality_column)
     return fig, ax
 
 
@@ -194,8 +191,8 @@ def create_rate_comparison_plot(
 # # Print stations with extreme rates for inspection
 # extreme_threshold = 15  # mm/yr
 # extreme_rates = rates[
-#     (abs(rates.gps_rate) > extreme_threshold)
-#     | (abs(rates.insar_rate) > extreme_threshold)
+#     (abs(rates.gps_velocity) > extreme_threshold)
+#     | (abs(rates.insar_velocity) > extreme_threshold)
 # ]
 # if not extreme_rates.empty:
 #     print("\nStations with extreme rates (>15 mm/yr):")
