@@ -14,6 +14,7 @@ from typing_extensions import Annotated
 
 import geepers.gps
 import geepers.io
+import geepers.rates
 from geepers._types import PathOrStr
 from geepers.constants import SENTINEL_1_WAVELENGTH
 
@@ -206,6 +207,13 @@ def run(
     combined_df = create_tidy_df(station_to_merged_df)
     # Save results
     combined_df.to_csv(output_dir / "combined_data.csv", index=False)
+
+    # Get the rates and summary stats
+    df_rates = geepers.rates.calculate_rates(df=combined_df, to_mm=True)
+    df_rates.to_csv(output_dir / "station_summary.csv", index=True)
+
+    # TODO: this should probably be done above?
+    # This relative part is pretty suspect:
 
     # Compare relative GPS and InSAR if reference station is provided
     if reference_station:
