@@ -71,6 +71,9 @@ class MidasResult:
             outlier_fraction=self.outlier_fraction,
         )
 
+    def __rmul__(self, x):
+        return self.__mul__(x)
+
 
 def np_cache(function):
     @cache
@@ -214,6 +217,15 @@ def midas(
     # Combine pairs
     pairs = np.vstack([pairs1, pairs2])
     n = len(pairs)
+    if n < 1:
+        return MidasResult(
+            velocity=np.nan,
+            velocity_uncertainty=np.nan,
+            reference_position=np.nan,
+            outlier_fraction=np.nan,
+            velocity_scatter=np.nan,
+            residuals=np.array([]),
+        )
 
     # Compute velocities
     dt = times[pairs[:, 1]] - times[pairs[:, 0]]
@@ -264,12 +276,3 @@ def midas(
         velocity_scatter=sd,
         residuals=r,
     )
-
-
-def get_midas_rate(df, station: str) -> MidasResult:
-    ddf = df[df.station == station]
-    ddf_gps = ddf[ddf.measurement == "los_gps"]
-    time_deltas = ddf_gps.date - ddf_gps.date.iloc[0]
-    years = time_deltas.dt.total_seconds() / (365.25 * 24 * 60 * 60)
-    values = ddf_gps.value.to_numpy()
-    return midas(times=years.to_numpy(), values=values)

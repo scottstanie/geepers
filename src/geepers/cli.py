@@ -190,25 +190,6 @@ def run(
         reader_similarity=reader_similarity,
     )
 
-    # station_to_insar_data: dict[str, pd.DataFrame] = {}
-    # for station_row in tqdm(
-    #     df_gps_stations.itertuples(),
-    #     total=num_stations,
-    #     desc="Loading InSAR at station locations",
-    # ):
-    #     los_insar_rad = (
-    #         reader.read_lon_lat(station_row.lon, station_row.lat, masked=True)
-    #         .ravel()
-    #         .squeeze()
-    #     )
-    #     los_insar = convert_to_meters(
-    #         reader.file_list[0], los_insar_rad, wavelength=SENTINEL_1_WAVELENGTH
-    #     )
-
-    #     station_to_insar_data[station_row.Index] = pd.DataFrame(
-    #         index=sec_date_series, data={"los_insar": los_insar}
-    #     )
-
     # Merge GPS and InSAR data
     station_to_merged_df: dict[str, pd.DataFrame] = {}
     for name in tqdm(station_to_los_gps_data, desc="Merging GPS and InSAR"):
