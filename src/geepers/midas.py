@@ -1,7 +1,7 @@
 """Python conversion of MIDAS velocity calculation.
 
 
-Original code: http://geodesy.unr.edu/MIDAS_release.tar
+Original code: https://geodesy.unr.edu/MIDAS_release.tar
 Original author: Geoff Blewitt.  Copyright (C) 2015.
 
 When using these velocities in publications please cite:

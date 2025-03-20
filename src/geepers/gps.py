@@ -29,10 +29,10 @@ __all__ = [
 ]
 
 # Constants
-GPS_BASE_URL = "http://geodesy.unr.edu/gps_timeseries/tenv3/IGS14/{station}.tenv3"
+GPS_BASE_URL = "https://geodesy.unr.edu/gps_timeseries/tenv3/IGS14/{station}.tenv3"
 GPS_DIR = utils.get_cache_dir()
 GPS_DIR.mkdir(exist_ok=True, parents=True)
-STATION_LLH_URL = "http://geodesy.unr.edu/NGLStationPages/llh.out"
+STATION_LLH_URL = "https://geodesy.unr.edu/NGLStationPages/llh.out"
 STATION_LLH_FILE = str(GPS_DIR / "station_llh_all_{today}.csv")
 
 logger = logging.getLogger(__name__)
@@ -146,13 +146,13 @@ def download_station_data(
 
     if coords == "enu":
         if plate_fixed:
-            url = f"http://geodesy.unr.edu/gps_timeseries/tenv3/plates/{plate}/{station_name}.{plate}.tenv3"
+            url = f"https://geodesy.unr.edu/gps_timeseries/tenv3/plates/{plate}/{station_name}.{plate}.tenv3"
             filename = GPS_DIR / f"{station_name}_{plate}.tenv3"
         else:
             url = GPS_BASE_URL.format(station=station_name)
             filename = GPS_DIR / f"{station_name}.tenv3"
     elif coords == "xyz":
-        url = f"http://geodesy.unr.edu/gps_timeseries/txyz/IGS14/{station_name}.txyz2"
+        url = f"https://geodesy.unr.edu/gps_timeseries/txyz/IGS14/{station_name}.txyz2"
         filename = GPS_DIR / f"{station_name}.txyz2"
     else:
         raise ValueError("coords must be either 'enu' or 'xyz'")
@@ -185,7 +185,7 @@ def _get_station_plate(station_name: str) -> str:
     requests.HTTPError
         If the request to fetch station information fails.
     """
-    url = f"http://geodesy.unr.edu/NGLStationPages/stations/{station_name}.sta"
+    url = f"https://geodesy.unr.edu/NGLStationPages/stations/{station_name}.sta"
     response = requests.get(url)
     response.raise_for_status()
 
@@ -288,7 +288,7 @@ def _clean_gps_df(
     Notes
     ----------
     See here for .tenv3 format:
-    http://geodesy.unr.edu/gps_timeseries/README_tenv3.txt
+    https://geodesy.unr.edu/gps_timeseries/README_tenv3.txt
     """
     df["date"] = pd.to_datetime(df["YYMMMDD"], format="%y%b%d")
 
