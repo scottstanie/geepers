@@ -1,31 +1,67 @@
+"""Compare InSAR time-series displacements with collocated GPS observations.
+
+Examples
+--------
+
+    python gps_insar_comparison.py --help    # show usage
+    python gps_insar_comparison.py \
+        --timeseries-files data/ts/*.tif \
+        --los-enu-file data/los_enu.tif \
+        --reference-station P123 \
+        --output-dir results/
+
+"""
+
+from __future__ import annotations
+
 import logging
 import warnings
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
 import requests
-import typer
+import tyro
 from numpy.typing import ArrayLike
 from opera_utils import get_dates
 from tqdm.auto import tqdm
 from tqdm.contrib.concurrent import thread_map
-from typing_extensions import Annotated
 
 import geepers.gps
-import geepers.io
 import geepers.rates
 from geepers._types import PathOrStr
 from geepers.constants import SENTINEL_1_WAVELENGTH
+from geepers.io import RasterReader, RasterStackReader, get_raster_units
+
+__all__ = [
+    "create_tidy_df",
+    "compare_relative_gps_insar",
+    "process_insar_data",
+    "_convert_to_meters",
+    "main",
+]
 
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
 
 
-main = typer.Typer()
+def create_tidy_df(station_to_merged_df: Mapping[str, pd.DataFrame]) -> pd.DataFrame:
+    """Stack per-station dataframes into a tidy (long-form) dataframe.
 
+    Parameters
+    ----------
+    station_to_merged_df
+        Mapping from station name to a *wide* dataframe that contains one column
+        per variable (e.g. ``los_gps``, ``los_insar``).
 
-def create_tidy_df(station_to_merged_df):
-    dfs = []
+    Returns
+    -------
+    pandas.DataFrame
+        Long-form dataframe with columns ``station``, ``date``, ``measurement``
+        and ``value`` suitable for plotting with *seaborn* or *altair*.
+    """
+    dfs: list[pd.DataFrame] = []
     for station, df in station_to_merged_df.items():
         df_reset = df.reset_index()
         df_melted = pd.melt(
@@ -35,23 +71,47 @@ def create_tidy_df(station_to_merged_df):
         dfs.append(df_melted)
 
     combined_df = pd.concat(dfs, ignore_index=True)
-    column_order = ["station", "date", "measurement", "value"]
-    return combined_df[column_order]
+    return combined_df[["station", "date", "measurement", "value"]]
 
 
 def compare_relative_gps_insar(
-    station_to_merged_df: dict[str, pd.DataFrame], reference_station: str
+    station_to_merged_df: Mapping[str, pd.DataFrame],
+    *,
+    reference_station: str,
 ) -> pd.DataFrame:
+    """Compute relative displacement between all stations and a reference.
+
+    The function subtracts the *GPS* and *InSAR* line-of-sight (LOS)
+    displacements of *reference_station* from every other station, yielding
+    time-series of relative motion.
+
+    Parameters
+    ----------
+    station_to_merged_df
+        Mapping from station name to merged GPS/InSAR dataframe produced by the
+        main workflow.
+    reference_station
+        Name of the station to treat as the zero reference.
+
+    Returns
+    -------
+    pandas.DataFrame
+        Tidy dataframe with the relative series and their differences.
+    """
     if reference_station not in station_to_merged_df:
-        raise ValueError(
-            f"Reference station '{reference_station}' not found in the data."
-        )
+        raise ValueError(f"Reference station '{reference_station}' not found.")
 
     ref_df = station_to_merged_df[reference_station]
-    results = []
+    results: list[pd.DataFrame] = []
 
     for station, df in station_to_merged_df.items():
         common_index = df.index.intersection(ref_df.index)
+        if common_index.empty:
+            logger.warning(
+                "No common epochs between %s and %s", station, reference_station
+            )
+            continue
+
         station_df = df.loc[common_index]
         ref_df_aligned = ref_df.loc[common_index]
 
@@ -59,85 +119,196 @@ def compare_relative_gps_insar(
         relative_insar = station_df["los_insar"] - ref_df_aligned["los_insar"]
         difference = relative_insar - relative_gps
 
-        station_result = pd.DataFrame(
-            {
-                "station": station,
-                "date": common_index,
-                "relative_gps": relative_gps,
-                "relative_insar": relative_insar,
-                "difference": difference,
-            }
+        results.append(
+            pd.DataFrame(
+                {
+                    "station": station,
+                    "date": common_index,
+                    "relative_gps": relative_gps,
+                    "relative_insar": relative_insar,
+                    "difference": difference,
+                }
+            )
         )
-        results.append(station_result)
 
     return pd.concat(results, ignore_index=True)
 
 
-@main.command()
-def run(
-    timeseries_files: Annotated[
-        list[Path], typer.Argument(help="Path to InSAR time series files")
-    ],
-    los_enu_file: Annotated[Path, typer.Option(help="Path to LOS ENU file")],
-    output_dir: Annotated[Path, typer.Option(help="Directory to save CSVs")] = Path(
-        "GPS"
-    ),
-    file_date_fmt: Annotated[
-        str, typer.Option(help="Date format in filenames")
-    ] = "%Y%m%d",
-    reference_station: Annotated[
-        str, typer.Option(help="Reference GPS station name")
-    ] = None,
-    temporal_coherence_file: Annotated[
-        Path, typer.Option(help="Path to temporal coherence")
-    ] = None,
-    similarity_file: Annotated[
-        Path, typer.Option(help="Path to phase similarity ")
-    ] = None,
-):
+def process_insar_data(
+    *,
+    reader: RasterStackReader,
+    df_gps_stations: pd.DataFrame,
+    file_date_fmt: str = "%Y%m%d",
+    reader_temporal_coherence: RasterReader | None = None,
+    reader_similarity: RasterReader | None = None,
+) -> dict[str, pd.DataFrame]:
+    """Sample InSAR rasters at all station locations in one pass.
+
+    Parameters
+    ----------
+    reader : RasterStackReader
+        *RasterStackReader* opened on the displacement stack.
+        Its ``file_list`` is assumed to be sorted chronologically.
+    df_gps_stations
+        DataFrame indexed by station name with at least ``lon`` and ``lat``
+        columns (decimal degrees).
+    file_date_fmt
+        ``strftime``-compatible pattern used to parse dates from filenames.
+    reader_temporal_coherence, reader_similarity
+        Optional single-band rasters to sample alongside displacement.
+
+    Returns
+    -------
+    dict[str, pandas.DataFrame]
+        A mapping from station name to a dataframe that contains *los_insar*
+        (in **metres**), *temporal_coherence* and *similarity* columns indexed
+        by acquisition date.
     """
-    Process InSAR time series and compare with GPS data.
+    lons = df_gps_stations.lon.to_numpy()
+    lats = df_gps_stations.lat.to_numpy()
+
+    # Displacement is returned as (n_dates, n_stations)
+    los_insar_rad = reader.read_lon_lat(lons, lats, masked=True).squeeze()
+
+    temp_coh = (
+        reader_temporal_coherence.read_lon_lat(lons, lats, masked=True).squeeze()
+        if reader_temporal_coherence is not None
+        else None
+    )
+    similarity = (
+        reader_similarity.read_lon_lat(lons, lats, masked=True).squeeze()
+        if reader_similarity is not None
+        else None
+    )
+
+    los_insar_m = _convert_to_meters(reader.file_list[0], los_insar_rad)
+
+    # Parse secondary dates from filenames
+    sec_dates = pd.to_datetime(
+        [get_dates(f, fmt=file_date_fmt)[1] for f in reader.file_list]
+    )
+
+    station_to_insar: dict[str, pd.DataFrame] = {}
+    for i, station in enumerate(df_gps_stations.index):
+        data = {
+            "los_insar": los_insar_m[:, i],
+        }
+        if similarity is not None:
+            data["similarity"] = similarity[i]
+        if temp_coh is not None:
+            data["temporal_coherence"] = temp_coh[i]
+
+        station_to_insar[station] = pd.DataFrame(index=sec_dates, data=data)
+
+    return station_to_insar
+
+
+def _convert_to_meters(
+    filename: PathOrStr,
+    arr: ArrayLike,
+    *,
+    wavelength: float = SENTINEL_1_WAVELENGTH,
+) -> np.ndarray:
+    """Convert displacement raster to metres if stored in radians.
+
+    Parameters
+    ----------
+    filename
+        Path to a raster whose *units* metadata will be inspected.
+    arr
+        Array of displacements to convert.
+    wavelength
+        Radar wavelength (metres) used for phase → displacement conversion.
+
+    Returns
+    -------
+    numpy.ndarray
+        Displacements in metres.
     """
+    phase2disp = float(wavelength) / (4.0 * np.pi)
+    input_units = get_raster_units(filename)
 
-    # Rest of your main function logic goes here...
-    typer.echo(f"Processing {len(timeseries_files)} time series files")
-    typer.echo(f"Using LOS ENU file: {los_enu_file}")
-    typer.echo(f"Output directory: {output_dir}")
-    typer.echo(f"File date format: {file_date_fmt}")
-    if reference_station:
-        typer.echo(f"Reference station: {reference_station}")
+    if input_units in (None, "radians"):
+        return np.asarray(arr) * phase2disp
+    if input_units == "meters":
+        return np.asarray(arr)
 
-    # Initialize RasterStackReader
-    reader = geepers.io.RasterStackReader.from_file_list(timeseries_files)
-    if temporal_coherence_file:
-        reader_temporal_coherence = geepers.io.RasterReader.from_file(
-            temporal_coherence_file
-        )
-    else:
-        reader_temporal_coherence = None
-    if similarity_file:
-        reader_similarity = geepers.io.RasterReader.from_file(similarity_file)
-    else:
-        reader_temporal_coherence = None
+    logger.debug("Unknown units '%s' for %s - assuming radians", input_units, filename)
+    return np.asarray(arr) * phase2disp
 
-    output_dir.mkdir(exist_ok=True)
 
-    # Parse dates from filenames
+def main(
+    *,
+    timeseries_files: Sequence[Path],
+    los_enu_file: Path,
+    output_dir: Path = Path("GPS"),
+    file_date_fmt: str = "%Y%m%d",
+    reference_station: str | None = None,
+    temporal_coherence_file: Path | None = None,
+    similarity_file: Path | None = None,
+) -> None:
+    """Process InSAR time-series and compare them to GPS displacements.
+
+    Parameters
+    ----------
+    timeseries_files
+        list of wrapped-phase (or displacement) rasters, *one per acquisition*.
+        File names **must** encode the reference and secondary dates using
+        *file_date_fmt*.
+    los_enu_file
+        Three-band GeoTIFF with the line-of-sight unit vector expressed in the
+        local East-North-Up coordinate frame.
+    output_dir
+        Directory where CSV outputs will be written.  Will be created if it does
+        not exist.
+    file_date_fmt
+        ``strftime`` pattern describing how dates are embedded in
+        *timeseries_files*.
+    reference_station
+        Optional GPS station name - if provided, relative displacements are
+        computed with respect to this station.
+    temporal_coherence_file, similarity_file
+        Optional rasters providing per-pixel temporal coherence and (Parizzi)
+        phase similarity which will be sampled at station locations.
+
+    Notes
+    -----
+    The script writes three CSV files into *output_dir*:
+
+    ``combined_data.csv``
+        Tidy table stacking raw GPS and InSAR series for each station.
+    ``station_summary.csv``
+        Per-station linear rates (mm/yr) computed from the combined table.
+    ``relative_comparison.csv``
+        Relative GPS/InSAR displacements if *reference_station* was specified.
+    """
+    output_dir.mkdir(parents=True, exist_ok=True)
+    logger.info("%d time-series rasters → %s", len(timeseries_files), output_dir)
+
+    reader = RasterStackReader.from_file_list(timeseries_files)
+    reader_temporal_coherence = (
+        RasterReader.from_file(temporal_coherence_file)
+        if temporal_coherence_file is not None
+        else None
+    )
+    reader_similarity = (
+        RasterReader.from_file(similarity_file) if similarity_file is not None else None
+    )
+
     file_dates = [get_dates(f, fmt=file_date_fmt) for f in timeseries_files]
-    ref_sec_dates = np.array(file_dates)
-    start_date, end_date = np.min(ref_sec_dates), np.max(ref_sec_dates)
-    sec_date_series = pd.to_datetime(ref_sec_dates[:, 1])
+    ref_sec_dates = np.asarray(file_dates)
     if np.unique(ref_sec_dates[:, 0]).size > 1:
         raise ValueError(
-            f"Parsed more than one reference date in file list: {file_dates}"
+            "Multiple reference dates detected in the stack - "
+            "processing currently assumes a single reference epoch."
         )
 
-    # Get GPS stations within the image
+    start_date, end_date = np.min(ref_sec_dates), np.max(ref_sec_dates)
+    logger.info("Reference→secondary range: %s → %s", start_date, end_date)
+
     df_gps_stations = geepers.gps.get_stations_within_image(timeseries_files[0])
     df_gps_stations.set_index("name", inplace=True)
-    num_stations = len(df_gps_stations)
 
-    # Download GPS data
     def _load_or_none(name: str) -> pd.DataFrame | None:
         try:
             return geepers.gps.load_station_enu(
@@ -146,44 +317,40 @@ def run(
         except requests.HTTPError:
             return None
 
-    max_workers = 5
     df_gps_list = thread_map(
         _load_or_none,
         df_gps_stations.index,
-        max_workers=max_workers,
-        desc="Downloading GPS Station data",
+        max_workers=5,
+        desc="Downloading GPS station data",
     )
 
-    # Load LOS ENU data
-    los_reader = geepers.io.RasterReader.from_file(los_enu_file)
-    # Process GPS data for each station
-    starting_points = 10
-    station_to_los_gps_data: dict[str, pd.DataFrame] = {}
+    los_reader = RasterReader.from_file(los_enu_file)
+    station_to_los_gps: dict[str, pd.DataFrame] = {}
+
     for station_row, df in tqdm(
         zip(df_gps_stations.itertuples(), df_gps_list),
-        total=num_stations,
-        desc="Projecting GPS to LOS",
+        total=len(df_gps_stations),
+        desc="Projecting GPS→LOS",
     ):
         if df is None:
-            typer.echo(f"Failed to download {station_row.Index}. Skipping")
+            warnings.warn(f"Failed to download {station_row.Index}; skipping.")
             continue
+
         enu_vec = los_reader.read_lon_lat(
             station_row.lon, station_row.lat, masked=True
         ).ravel()
-        if (enu_vec == 0).all():
-            warnings.warn(f"{station_row.Index} does not have LOS data. Skipping")
+        if np.allclose(enu_vec, 0):
+            warnings.warn(f"{station_row.Index} lies outside LOS raster; skipping.")
             continue
 
         e, n, u = enu_vec
+        df = df.copy()
         df["los_gps"] = df.east * e + df.north * n + df.up * u
-        df["los_gps"] -= df["los_gps"][:starting_points].mean()
-        station_to_los_gps_data[station_row.Index] = df[["los_gps"]]
+        df["los_gps"] -= df["los_gps"].iloc[:10].mean()  # remove arbitrary offset
+        station_to_los_gps[station_row.Index] = df[["los_gps"]]
 
-    # Process InSAR data for each station
-    # TODO: this is slow for large number of dates
-    # Should probably pass all lons/lats, so that readers can each fetch all,
-    # rather than each reader gets 1 and iterate through readers
-    station_to_insar_data = process_insar_data(
+    # Sample InSAR rasters at station locations
+    station_to_insar = process_insar_data(
         reader=reader,
         df_gps_stations=df_gps_stations,
         file_date_fmt=file_date_fmt,
@@ -191,122 +358,39 @@ def run(
         reader_similarity=reader_similarity,
     )
 
-    # Merge GPS and InSAR data
-    station_to_merged_df: dict[str, pd.DataFrame] = {}
-    for name in tqdm(station_to_los_gps_data, desc="Merging GPS and InSAR"):
-        df_merged = pd.merge(
-            left=station_to_los_gps_data[name],
-            right=station_to_insar_data[name],
+    # Merge GPS and InSAR tables per station
+    station_to_merged: dict[str, pd.DataFrame] = {}
+    for name in tqdm(station_to_los_gps, desc="Merging GPS↔InSAR"):
+        station_to_merged[name] = pd.merge(
+            station_to_los_gps[name],
+            station_to_insar[name],
             how="left",
             left_index=True,
             right_index=True,
         )
-        station_to_merged_df[name] = df_merged
 
-    # Create tidy DataFrame
-    combined_df = create_tidy_df(station_to_merged_df)
     # Save results
+    combined_df = create_tidy_df(station_to_merged)
     combined_df.to_csv(output_dir / "combined_data.csv", index=False)
 
-    # Get the rates and summary stats
     df_rates = geepers.rates.calculate_rates(df=combined_df, to_mm=True)
-    df_rates.to_csv(output_dir / "station_summary.csv", index=True)
+    df_rates.to_csv(output_dir / "station_summary.csv")
 
-    # TODO: this should probably be done above?
-    # This relative part is pretty suspect:
-
-    # Compare relative GPS and InSAR if reference station is provided
     if reference_station:
-        compare_results = compare_relative_gps_insar(
-            station_to_merged_df, reference_station=reference_station
+        rel_df = compare_relative_gps_insar(
+            station_to_merged, reference_station=reference_station
         )
-        print("Relative comparison results:")
-        print(compare_results)
-        compare_results.to_csv(output_dir / "relative_comparison.csv", index=False)
+        rel_df.to_csv(output_dir / "relative_comparison.csv", index=False)
 
-    typer.echo(f"Results saved in {output_dir}")
+    logger.info("Finished - results written to %s", output_dir)
 
 
-# Process InSAR data for each station more efficiently by reading all stations at once
-def process_insar_data(
-    reader: geepers.io.RasterStackReader,
-    df_gps_stations: pd.DataFrame,
-    file_date_fmt: str = "%Y%m%d",
-    reader_temporal_coherence: geepers.io.RasterReader | None = None,
-    reader_similarity: geepers.io.RasterReader | None = None,
-) -> dict[str, pd.DataFrame]:
-    """Process InSAR data for all stations more efficiently.
-
-    Parameters
-    ----------
-    reader : RasterStackReader
-        Reader containing the InSAR time series data
-    df_gps_stations : pd.DataFrame
-        DataFrame containing station information with 'lon' and 'lat' columns
-        and station names as index
-
-    Returns
-    -------
-    dict[str, pd.DataFrame]
-        Dictionary mapping station names to DataFrames containing InSAR data
-    """
-    # Get all station coordinates at once
-    lons = df_gps_stations.lon.values
-    lats = df_gps_stations.lat.values
-
-    # Read all stations at once for each time step
-    # This returns array of shape (n_dates, n_stations)
-    los_insar_rad = reader.read_lon_lat(lons, lats, masked=True).squeeze()
-
-    temp_coh = (
-        reader_temporal_coherence.read_lon_lat(lons, lats, masked=True).squeeze()
-        if reader_temporal_coherence
-        else None
-    )
-    similarity = (
-        reader_similarity.read_lon_lat(lons, lats, masked=True).squeeze()
-        if reader_similarity
-        else None
-    )
-
-    # Convert to meters
-    los_insar = convert_to_meters(
-        reader.file_list[0], los_insar_rad, wavelength=SENTINEL_1_WAVELENGTH
-    )
-
-    # Create date series for the time steps
-    sec_date_series = pd.to_datetime(
-        [get_dates(f, fmt=file_date_fmt)[1] for f in reader.file_list]
-    )
-
-    # Create dictionary of DataFrames for each station
-    station_to_insar_data = {}
-    for i, station in enumerate(df_gps_stations.index):
-        station_to_insar_data[station] = pd.DataFrame(
-            index=sec_date_series,
-            data={
-                "los_insar": los_insar[:, i],
-                "similarity": similarity[i],
-                "temporal_coherence": temp_coh[i],
-            },
-        )
-
-    return station_to_insar_data
+def cli():
+    tyro.cli(main)
 
 
-def convert_to_meters(
-    filename: PathOrStr, arr: ArrayLike, wavelength: float = SENTINEL_1_WAVELENGTH
-):
-    phase2disp = float(wavelength) / (4.0 * np.pi)
-    input_units = geepers.io.get_raster_units(filename)
-    if not input_units or input_units not in ("meters", "radians"):
-        logger.debug(f"Unknown units for {filename}: assuming radians")
-        return arr * phase2disp
-    elif input_units == "radians":
-        return arr * phase2disp
-    else:
-        return arr
+cli.__doc__ = main.__doc__
 
 
 if __name__ == "__main__":
-    main()
+    cli()
