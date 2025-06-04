@@ -228,13 +228,13 @@ def _convert_to_meters(
     phase2disp = float(wavelength) / (4.0 * np.pi)
     input_units = get_raster_units(filename)
 
-    if input_units in (None, "radians"):
+    if input_units == "radians":
         return np.asarray(arr) * phase2disp
     if input_units == "meters":
         return np.asarray(arr)
 
-    logger.debug("Unknown units '%s' for %s - assuming radians", input_units, filename)
-    return np.asarray(arr) * phase2disp
+    logger.debug("Unknown units '%s' for %s - assuming meters", input_units, filename)
+    return np.asarray(arr)
 
 
 def main(
