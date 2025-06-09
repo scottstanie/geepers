@@ -25,7 +25,7 @@ from tqdm import tqdm
 
 LOOKUP_FILE_URL = "https://geodesy.unr.edu/grid_timeseries/grid_latlon_lookup.txt"
 GRID_DATA_BASE_URL = (
-    "https://geodesy.unr.edu/grid_timeseries/time_constant_gridded/IGS14/"
+    "https://geodesy.unr.edu/grid_timeseries/time_variable_gridded/IGS14/"
 )
 
 
