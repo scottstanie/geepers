@@ -35,7 +35,7 @@ dependencies = [
   "pyproj",
   "shapely",
   "rasterio",
-  "typer",
+  "tyro",
 ]
 
 [project.urls]
@@ -46,7 +46,7 @@ Changelog = "https://github.com/isce-framework/geepers/releases"
 
 # Entry points for the command line interface
 [project.scripts]
-geepers = "geepers.cli:main"
+geepers = "geepers.cli:cli"
 
 
 # extra requirements: `pip install .[docs]` or `pip install .[docs]`
