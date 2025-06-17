@@ -73,6 +73,9 @@ pytest-randomly = "*"
 pytest-xdist = "*"
 ruff = "*"
 
+[tool.pixi.environments]
+test = ["test"]
+
 # extra requirements: `pip install .[docs]` or `pip install .[docs]`
 [tool.setuptools.dynamic.optional-dependencies.docs]
 file = ["docs/requirements.txt"]
