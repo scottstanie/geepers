@@ -6,7 +6,7 @@ from scipy import stats
 
 
 def create_comparison_plot(df: pd.DataFrame) -> tuple[plt.Figure, plt.Axes]:
-    """Create a publication-quality scatter plot comparing GPS and InSAR measurements.
+    """Create scatter plot comparing GPS and InSAR measurements.
 
     Parameters
     ----------
@@ -19,16 +19,12 @@ def create_comparison_plot(df: pd.DataFrame) -> tuple[plt.Figure, plt.Axes]:
         The figure object
     ax : plt.Axes
         The axes object
-    """
-    # Set the style for publication-quality plots
-    plt.style.use("seaborn-v0_8-paper")
 
-    # Pivot the data to get GPS and InSAR measurements
+    """
     df_wide = df.pivot_table(
         index=["station", "date"], columns="measurement", values="value"
     ).reset_index()
 
-    # Calculate correlation coefficient and RMSE
     valid_mask = ~(np.isnan(df_wide.los_gps) | np.isnan(df_wide.los_insar))
     gps_valid = df_wide.los_gps[valid_mask]
     insar_valid = df_wide.los_insar[valid_mask]
@@ -58,7 +54,6 @@ def create_comparison_plot(df: pd.DataFrame) -> tuple[plt.Figure, plt.Axes]:
     )
     ax.plot(lims, lims, "gray", linestyle="-", alpha=0.8, zorder=0)
 
-    # Set equal aspect ratio
     ax.set_aspect("equal")
 
     # Set limits to be symmetric around zero
@@ -66,18 +61,11 @@ def create_comparison_plot(df: pd.DataFrame) -> tuple[plt.Figure, plt.Axes]:
     ax.set_xlim(-max_val, max_val)
     ax.set_ylim(-max_val, max_val)
 
-    # Add grid
     ax.grid(True, linestyle=":", alpha=0.6)
-
-    # Set labels and title
     ax.set_xlabel("InSAR [mm/year]")
     ax.set_ylabel("GPS [mm/year]")
-
-    # Add minor ticks
     ax.xaxis.set_minor_locator(MultipleLocator(5))
     ax.yaxis.set_minor_locator(MultipleLocator(5))
-
-    # Add legend
     ax.legend(
         frameon=True,
         facecolor="white",
@@ -92,11 +80,6 @@ def create_comparison_plot(df: pd.DataFrame) -> tuple[plt.Figure, plt.Axes]:
     return fig, ax
 
 
-# # Read and process the data
-# df = pd.read_csv("combined_data.csv")
-# fig, ax = create_comparison_plot(df)
-
-
 def create_rate_comparison_plot(
     rates: pd.DataFrame,
     quality_column: str = "similarity",
@@ -108,6 +91,10 @@ def create_rate_comparison_plot(
     ----------
     rates : pd.DataFrame
         DataFrame with columns: station, gps_velocity, insar_velocity
+    quality_column : str, optional
+        Column to use for color mapping. Default is "similarity".
+    quality_cmap : str, optional
+        Colormap to use for color mapping. Default is "viridis".
 
     Returns
     -------
@@ -115,6 +102,7 @@ def create_rate_comparison_plot(
         The figure object
     ax : plt.Axes
         The axes object
+
     """
     plt.style.use("seaborn-v0_8-paper")
 
@@ -164,7 +152,7 @@ def create_rate_comparison_plot(
     ax.xaxis.set_minor_locator(MultipleLocator(5))
     ax.yaxis.set_minor_locator(MultipleLocator(5))
 
-    props = dict(boxstyle="round", facecolor="wheat", alpha=0.5)
+    props = {"boxstyle": "round", "facecolor": "wheat", "alpha": 0.5}
     label = f"Corr coeff: {corr_coef:.2f}\nRMSE: {rmse:.1f} mm/yr"
     ax.text(
         x=0.05,
@@ -176,24 +164,3 @@ def create_rate_comparison_plot(
     )
     fig.colorbar(scatter_img, ax=ax, label=quality_column)
     return fig, ax
-
-
-# # Read and process the data
-# df = pd.read_csv("combined_data.csv")
-# rates = calculate_rates(df)
-# print(f"Found rates for {len(rates)} stations")
-
-# # Create and save the plot
-# fig, ax = create_rate_comparison_plot(rates)
-# plt.savefig("gps_insar_rates_comparison.pdf", bbox_inches="tight", dpi=300)
-# plt.savefig("gps_insar_rates_comparison.png", bbox_inches="tight", dpi=300)
-
-# # Print stations with extreme rates for inspection
-# extreme_threshold = 15  # mm/yr
-# extreme_rates = rates[
-#     (abs(rates.gps_velocity) > extreme_threshold)
-#     | (abs(rates.insar_velocity) > extreme_threshold)
-# ]
-# if not extreme_rates.empty:
-#     print("\nStations with extreme rates (>15 mm/yr):")
-#     print(extreme_rates)

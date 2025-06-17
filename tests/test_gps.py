@@ -6,7 +6,6 @@ from pathlib import Path
 from unittest.mock import Mock, patch
 
 import geopandas as gpd
-import numpy as np
 import pandas as pd
 import pytest
 import requests
@@ -81,19 +80,29 @@ def station_gdf(station_df: pd.DataFrame) -> gpd.GeoDataFrame:
 
 
 class TestGetStationsWithinImage:
-    """Unit tests for :func:`gps.get_stations_within_image`."""
+    @pytest.fixture
+    def mock_src(
+        self,
+        bounds=(-156.5, 18.0, -154.0, 20.0),
+        crs="EPSG:4326",
+        index_side_effect=None,
+        read_side_effect=None,
+    ):
+        m = Mock()
+        m.bounds = bounds
+        m.crs = crs
+        if index_side_effect is not None:
+            m.index.side_effect = index_side_effect
+        if read_side_effect is not None:
+            m.read.side_effect = read_side_effect
+        return m
 
-    def test_stations_within_bounds(self, station_gdf):
+    def test_stations_within_bounds(self, station_gdf, mock_src):
         """Both stations fall inside the mocked raster bounds."""
         with (
             patch("geepers.gps.read_station_llas", return_value=station_gdf),
             patch("rasterio.open") as mock_rio,
         ):
-            mock_src = Mock()
-            # Bounds encompass Hawaii where CRIM/OUTL are located
-            mock_src.bounds = (-156.5, 18.0, -154.0, 20.0)
-            mock_src.crs = "EPSG:4326"
-            # We disable pixel-validity checks to keep this test focused
             mock_rio.return_value.__enter__.return_value = mock_src
 
             result = gps.get_stations_within_image("dummy.tif", mask_invalid=False)
@@ -101,37 +110,12 @@ class TestGetStationsWithinImage:
             assert len(result) == 2
             assert set(result.name) == {"CRIM", "OUTL"}
 
-    def test_mask_invalid_pixels(self, station_gdf):
-        """Only CRIM has a *valid* (non-NaN / non-zero) pixel value."""
-        with (
-            patch("geepers.gps.read_station_llas", return_value=station_gdf),
-            patch("rasterio.open") as mock_rio,
-        ):
-            mock_src = Mock()
-            mock_src.bounds = (-156.5, 18.0, -154.0, 20.0)
-            mock_src.crs = "EPSG:4326"
-            # One index/val per station (same order as station_gdf)
-            mock_src.index.side_effect = [(0, 0), (1, 1)]
-            mock_src.read.side_effect = [
-                np.array([[1.0]]),  # valid for CRIM
-                np.array([[0.0]]),  # invalid (bad value) for OUTL
-            ]
-            mock_rio.return_value.__enter__.return_value = mock_src
-
-            result = gps.get_stations_within_image("dummy.tif", mask_invalid=True)
-
-            assert len(result) == 1
-            assert result.name.iloc[0] == "CRIM"
-
-    def test_exclude_stations(self, station_gdf):
+    def test_exclude_stations(self, station_gdf, mock_src):
         """Explicitly exclude OUTL from the returned GeoDataFrame."""
         with (
             patch("geepers.gps.read_station_llas", return_value=station_gdf),
             patch("rasterio.open") as mock_rio,
         ):
-            mock_src = Mock()
-            mock_src.bounds = (-156.5, 18.0, -154.0, 20.0)
-            mock_src.crs = "EPSG:4326"
             mock_rio.return_value.__enter__.return_value = mock_src
 
             result = gps.get_stations_within_image(

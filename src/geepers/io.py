@@ -1,14 +1,12 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import ExitStack
 from dataclasses import dataclass
-from pathlib import Path
 from typing import (
     TYPE_CHECKING,
-    Optional,
     Protocol,
-    Sequence,
     runtime_checkable,
 )
 
@@ -17,12 +15,11 @@ import rasterio as rio
 import rasterio.windows
 from numpy.typing import ArrayLike
 from rasterio.vrt import WarpedVRT
-from tqdm.auto import tqdm
 from tqdm.contrib.concurrent import thread_map
 
 from ._types import PathOrStr
 
-__all__ = ["DatasetReader", "StackReader", "RasterReader", "RasterStackReader"]
+__all__ = ["DatasetReader", "RasterReader", "RasterStackReader", "StackReader"]
 
 
 if TYPE_CHECKING:
@@ -125,13 +122,13 @@ class RasterReader(DatasetReader):
     shape: tuple[int, int]
     dtype: np.dtype
 
-    nodata: Optional[float] = None
+    nodata: float | None = None
     """Optional[float] : Value to use for nodata pixels."""
 
     keep_open: bool = False
     """bool : If True, keep the rasterio file handle open for faster reading."""
 
-    chunks: Optional[tuple[int, int]] = None
+    chunks: tuple[int, int] | None = None
     """Optional[tuple[int, int]] : Chunk shape of the dataset, or None if unchunked."""
 
     @classmethod
@@ -139,7 +136,7 @@ class RasterReader(DatasetReader):
         cls,
         filename: PathOrStr,
         band: int = 1,
-        nodata: Optional[float] = None,
+        nodata: float | None = None,
         keep_open: bool = False,
         **options,
     ) -> RasterReader:
@@ -235,7 +232,11 @@ class RasterReader(DatasetReader):
 
             with WarpedVRT(src, crs="EPSG:4326") as vrt:
                 return np.array(
-                    list(vrt.sample(xy=zip(lon_list, lat_list), masked=masked))
+                    list(
+                        vrt.sample(
+                            xy=zip(lon_list, lat_list, strict=False), masked=masked
+                        )
+                    )
                 )
 
     def read_window(
@@ -326,7 +327,7 @@ class BaseStackReader(StackReader):
     file_list: Sequence[PathOrStr]
     readers: Sequence[DatasetReader]
     num_threads: int = 1
-    nodata: Optional[float] = None
+    nodata: float | None = None
 
     def __getitem__(self, key: tuple[Index, ...], /) -> np.ndarray:
         return _read_3d(key, self.readers, num_threads=self.num_threads)
@@ -370,8 +371,8 @@ class RasterStackReader(BaseStackReader):
         bands: int | Sequence[int] = 1,
         keep_open: bool = False,
         num_threads: int = 1,
-        nodata: Optional[float] = None,
-    ) -> "RasterStackReader":
+        nodata: float | None = None,
+    ) -> RasterStackReader:
         """Create a RasterStackReader from a list of files.
 
         Parameters
@@ -400,7 +401,7 @@ class RasterStackReader(BaseStackReader):
 
         readers = [
             RasterReader.from_file(f, band=b, keep_open=keep_open)
-            for (f, b) in zip(file_list, bands)
+            for (f, b) in zip(file_list, bands, strict=False)
         ]
         # Check if nodata values were found in the files
         nds = {r.nodata for r in readers}

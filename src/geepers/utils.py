@@ -1,7 +1,7 @@
 import os
 import sys
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Sequence
 
 import numpy as np
 
@@ -64,6 +64,7 @@ def get_cache_dir(force_posix=False, app_name="geepers") -> Path:
 
     Starting source:
     https://github.com/pallets/click/blob/ca5e1c3d75e95cbc70fa6ed51ef263592e9ac0d0/src/click/utils.py#L32
+
     """
     if force_posix:
         return Path(f"~/.{app_name}").expanduser()
@@ -74,28 +75,3 @@ def get_cache_dir(force_posix=False, app_name="geepers") -> Path:
             os.environ.get("XDG_CONFIG_HOME", Path("~/.cache").expanduser())
         )
         return base_path / app_name
-
-
-def station_distance(station_name1: str, station_name2: str) -> float:
-    """Find geodetic distance (in meters) between two gps stations.
-
-    Uses the WGS84 ellipsoid for calculation.
-
-    Parameters
-    ----------
-    station_name1 :str)
-        name of first GPS station
-    station_name2 :str)
-        name of second GPS station
-
-    Returns:
-        float: distance (in meters)
-    """
-    from pyproj import Geod
-
-    lon1, lat1 = station_lonlat(station_name1)
-    lon2, lat2 = station_lonlat(station_name2)
-
-    g = Geod(ellps="WGS84")
-
-    return g.line_length([lon1, lon2], [lat1, lat2], radians=False)
