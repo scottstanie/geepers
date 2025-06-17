@@ -43,11 +43,39 @@ Changelog = "https://github.com/isce-framework/geepers/releases"
 geepers = "geepers.cli:cli"
 
 
+[tool.pixi.project]
+channels = ["conda-forge"]
+platforms = ["osx-arm64", "linux-64"]
+
+[tool.pixi.pypi-dependencies]
+geepers = { path = ".", editable = true }
+
+[tool.pixi.dependencies]
+python = ">=3.11"
+pip = ">=21.3"
+git = "*"
+pandas = "*"
+geopandas-base = "*"
+xarray = "*"
+pyproj = "*"
+rasterio = "*"
+shapely = "*"
+
+[tool.pixi.tasks]
+check = "pre-commit run -a"
+test = "pytest"
+
+[tool.pixi.feature.test.dependencies]
+pre-commit = "*"
+pytest = "*"
+pytest-cov = "*"
+pytest-randomly = "*"
+pytest-xdist = "*"
+ruff = "*"
+
 # extra requirements: `pip install .[docs]` or `pip install .[docs]`
 [tool.setuptools.dynamic.optional-dependencies.docs]
 file = ["docs/requirements.txt"]
-[tool.setuptools.dynamic.optional-dependencies.test]
-file = ["tests/requirements.txt"]
 
 [tool.setuptools_scm]
 # https://github.com/pypa/setuptools_scm#configuration-parameters
