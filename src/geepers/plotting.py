@@ -2,7 +2,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from matplotlib.ticker import MultipleLocator
-from scipy import stats
 
 
 def create_comparison_plot(df: pd.DataFrame) -> tuple[plt.Figure, plt.Axes]:
@@ -29,7 +28,6 @@ def create_comparison_plot(df: pd.DataFrame) -> tuple[plt.Figure, plt.Axes]:
     gps_valid = df_wide.los_gps[valid_mask]
     insar_valid = df_wide.los_insar[valid_mask]
 
-    corr_coef = stats.pearsonr(gps_valid, insar_valid)[0]
     rmse = np.sqrt(np.mean((gps_valid - insar_valid) ** 2))
 
     # Create the figure
@@ -42,7 +40,7 @@ def create_comparison_plot(df: pd.DataFrame) -> tuple[plt.Figure, plt.Axes]:
         color="#2b8cbe",
         alpha=0.6,
         s=30,
-        label=f"Corr coeff: {corr_coef:.2f}\nRMSE: {rmse:.1f} mm/yr",
+        label=f"RMSE: {rmse:.1f} mm/yr",
     )
 
     # Plot the 1:1 line
@@ -107,7 +105,6 @@ def create_rate_comparison_plot(
     plt.style.use("seaborn-v0_8-paper")
 
     # Calculate correlation coefficient and RMSE
-    corr_coef = stats.pearsonr(rates.insar_velocity, rates.gps_velocity)[0]
     rmse = np.sqrt(np.mean((rates.gps_velocity - rates.insar_velocity) ** 2))
 
     # Create the figure
@@ -153,7 +150,7 @@ def create_rate_comparison_plot(
     ax.yaxis.set_minor_locator(MultipleLocator(5))
 
     props = {"boxstyle": "round", "facecolor": "wheat", "alpha": 0.5}
-    label = f"Corr coeff: {corr_coef:.2f}\nRMSE: {rmse:.1f} mm/yr"
+    label = f"RMSE: {rmse:.1f} mm/yr"
     ax.text(
         x=0.05,
         y=0.95,
