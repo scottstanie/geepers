@@ -4,16 +4,18 @@ from collections.abc import Sequence
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import ExitStack
 from dataclasses import dataclass
-from typing import (
-    TYPE_CHECKING,
-    Protocol,
-    runtime_checkable,
-)
+from pathlib import Path
+from typing import TYPE_CHECKING, Protocol, Self, runtime_checkable
 
 import numpy as np
+import pandas as pd
 import rasterio as rio
 import rasterio.windows
+import xarray as xr
+from affine import cached_property
 from numpy.typing import ArrayLike
+from opera_utils import get_dates
+from pyproj import Transformer
 from rasterio.vrt import WarpedVRT
 from tqdm.contrib.concurrent import thread_map
 
@@ -52,6 +54,20 @@ class DatasetReader(Protocol):
         """Read a block of data."""
         ...
 
+    def read_window(
+        self,
+        lon: float,
+        lat: float,
+        buffer_pixels: int = 0,
+        op=round,
+    ) -> np.ndarray:
+        """Read in pixel values in a spatial window centered at `lon`, `lat`."""
+        ...
+
+    def read_lon_lat(self, lons, lats) -> np.ndarray:
+        """Read in raster values located at `lons`, `lats`."""
+        ...
+
 
 @runtime_checkable
 class StackReader(DatasetReader, Protocol):
@@ -72,12 +88,19 @@ class StackReader(DatasetReader, Protocol):
         """Int : Number of images in the stack."""
         return self.shape[0]
 
+    def read_lon_lat(self, lons, lats) -> np.ndarray:
+        """Read in raster values located at `lons`, `lats`."""
+        ...
 
-def _mask_array(arr: np.ndarray, nodata_value: float | None) -> np.ma.MaskedArray:
-    """Mask an array based on a nodata value."""
-    if np.isnan(nodata_value):
-        return np.ma.masked_invalid(arr)
-    return np.ma.masked_equal(arr, nodata_value)
+    def read_window(
+        self,
+        lon: float,
+        lat: float,
+        buffer_pixels: int = 0,
+        op=round,
+    ) -> np.ndarray:
+        """Read in pixel values in a spatial window centered at `lon`, `lat`."""
+        ...
 
 
 @dataclass
@@ -91,11 +114,8 @@ class RasterReader(DatasetReader):
 
     Notes
     -----
-    If `keep_open=True`, this class does not store an open file object.
-    Otherwise, the file is opened on-demand for reading or writing and closed
+    The file is opened on-demand for reading or writing and closed
     immediately after each read/write operation.
-    If passing the `RasterReader` to multiple spawned processes, it is recommended
-    to set `keep_open=False` .
 
     """
 
@@ -125,11 +145,8 @@ class RasterReader(DatasetReader):
     nodata: float | None = None
     """Optional[float] : Value to use for nodata pixels."""
 
-    keep_open: bool = False
-    """bool : If True, keep the rasterio file handle open for faster reading."""
-
-    chunks: tuple[int, int] | None = None
-    """Optional[tuple[int, int]] : Chunk shape of the dataset, or None if unchunked."""
+    masked: bool = True
+    """bool : If True, reads in data as a MaskedArray, masking nodata values."""
 
     @classmethod
     def from_file(
@@ -137,7 +154,6 @@ class RasterReader(DatasetReader):
         filename: PathOrStr,
         band: int = 1,
         nodata: float | None = None,
-        keep_open: bool = False,
         **options,
     ) -> RasterReader:
         with rio.open(filename, "r", **options) as src:
@@ -147,7 +163,6 @@ class RasterReader(DatasetReader):
             crs = src.crs
             nodata = nodata or src.nodatavals[band - 1]
             transform = src.transform
-            chunks = src.block_shapes[band - 1]
 
             return cls(
                 filename=filename,
@@ -158,13 +173,7 @@ class RasterReader(DatasetReader):
                 shape=shape,
                 dtype=dtype,
                 nodata=nodata,
-                keep_open=keep_open,
-                chunks=chunks,
             )
-
-    def __post_init__(self):
-        if self.keep_open:
-            self._src = rio.open(self.filename, "r")
 
     @property
     def ndim(self) -> int:  # type: ignore[override]
@@ -189,18 +198,16 @@ class RasterReader(DatasetReader):
             height=self.shape[0],
             width=self.shape[1],
         )
-        if self.keep_open:
-            out = self._src.read(self.band, window=window)
 
         with rio.open(self.filename) as src:
-            out = src.read(self.band, window=window)
-        out_masked = _mask_array(out, self.nodata) if self.nodata is not None else out
+            out = src.read(self.band, window=window, masked=True)
         # Note that Rasterio doesn't use the `step` of a slice, so we need to
         # manually slice the output array.
         r_step, c_step = r_slice.step or 1, c_slice.step or 1
-        return out_masked[::r_step, ::c_step].squeeze()
+        o = out[::r_step, ::c_step]
+        return np.ma.squeeze(o)
 
-    def read_lon_lat(self, lons, lats, masked: bool = False) -> np.ndarray:
+    def read_lon_lat(self, lons, lats) -> np.ndarray:
         """Get pixel values from a raster file for given longitudes and latitudes.
 
         Parameters
@@ -222,10 +229,7 @@ class RasterReader(DatasetReader):
 
         """
         with ExitStack() as stack:
-            if not self.keep_open:
-                src = stack.enter_context(rio.open(self.filename))
-            else:
-                src = self._src
+            src = stack.enter_context(rio.open(self.filename))
 
             lon_list = [lons] if np.isscalar(lons) else lons
             lat_list = [lats] if np.isscalar(lats) else lats
@@ -234,7 +238,7 @@ class RasterReader(DatasetReader):
                 return np.array(
                     list(
                         vrt.sample(
-                            xy=zip(lon_list, lat_list, strict=False), masked=masked
+                            xy=zip(lon_list, lat_list, strict=False), masked=self.masked
                         )
                     )
                 )
@@ -245,7 +249,6 @@ class RasterReader(DatasetReader):
         lat: float,
         buffer_pixels: int = 0,
         op=round,
-        masked: bool = False,
     ):
         """Get a window of pixel values for a given longitude and latitude.
 
@@ -271,10 +274,7 @@ class RasterReader(DatasetReader):
 
         """
         with ExitStack() as stack:
-            if not self.keep_open:
-                src = stack.enter_context(rio.open(self.filename))
-            else:
-                src = self._src
+            src = stack.enter_context(rio.open(self.filename))
 
             # Transform the lon/lat to the raster's CRS
             x, y = rio.warp.transform("EPSG:4326", src.crs, [lon], [lat])
@@ -290,7 +290,7 @@ class RasterReader(DatasetReader):
                 2 * buffer_pixels + 1,
             )
 
-            return src.read(self.band, window=window, masked=masked)
+            return src.read(self.band, window=window, masked=self.masked)
 
 
 def _read_3d(
@@ -321,13 +321,74 @@ def _read_3d(
 
 
 @dataclass
-class BaseStackReader(StackReader):
-    """Base class for stack readers."""
+class XarrayStackReader(StackReader):
+    """A stack of datasets for any GDAL-readable rasters."""
+
+    da: xr.DataArray
+
+    @classmethod
+    def from_geotiff_files(
+        cls,
+        file_list: Sequence[Path | str],
+        file_date_fmt: str = "%Y%m%d",
+        file_date_idx: int = 0,
+    ) -> Self:
+        def preprocess(ds: xr.Dataset) -> xr.Dataset:
+            """Preprocess individual dataset when loading with open_mfdataset."""
+            fname = ds.encoding["source"]
+            date = get_dates(fname, fmt=file_date_fmt)[file_date_idx]
+            if len(ds.band) == 1:
+                ds = ds.sel(band=ds.band[0]).drop_vars("band")
+            return ds.expand_dims(time=[pd.to_datetime(date)])
+
+        ds = xr.open_mfdataset(sorted(file_list), preprocess=preprocess)
+        return cls(ds.band_data)
+
+    @property
+    def ndim(self):
+        return self.da.ndim
+
+    @property
+    def shape(self):
+        return self.da.shape
+
+    @property
+    def dtype(self):
+        return self.da.dtype
+
+    def __getitem__(self, key: tuple[Index, ...], /) -> np.ndarray:
+        return self.da[key].values
+
+    @property
+    def crs(self):
+        return self.da.rio.crs()
+
+    def read_lon_lat(self, lons, lats):
+        if self.crs != "EPSG:4326":
+            with WarpedVRT(self.da, crs="EPSG:4326") as vrt:
+                return vrt.sel(x=lons, y=lats, method="nearest").values
+        return self.da.sel(x=lons, y=lats, method="nearest").values
+
+    @cached_property
+    def _transformer_from_lonlat(self):
+        return Transformer.from_crs("EPSG:4326", self.crs, always_xy=True)
+
+    def _get_point_values(self, lon: float, lat: float) -> np.ndarray:
+        """Get point values for a dataset at lon/lat."""
+        x, y = self._transformer_from_lonlat.transform(lon, lat)
+        point_data = self.da.sel(x=x, y=y, method="nearest")
+        return np.atleast_1d(point_data.values)
+
+
+@dataclass
+class RasterStackReader(StackReader):
+    """A stack of datasets for any GDAL-readable rasters."""
 
     file_list: Sequence[PathOrStr]
     readers: Sequence[DatasetReader]
     num_threads: int = 1
     nodata: float | None = None
+    masked: bool = True
 
     def __getitem__(self, key: tuple[Index, ...], /) -> np.ndarray:
         return _read_3d(key, self.readers, num_threads=self.num_threads)
@@ -344,26 +405,6 @@ class BaseStackReader(StackReader):
     def dtype(self):
         return self.readers[0].dtype
 
-
-@dataclass
-class RasterStackReader(BaseStackReader):
-    """A stack of datasets for any GDAL-readable rasters.
-
-    See Also
-    --------
-    BinaryStackReader
-    HDF5StackReader
-
-    Notes
-    -----
-    If `keep_open=True`, this class stores an open file object.
-    Otherwise, the file is opened on-demand for reading or writing and closed
-    immediately after each read/write operation.
-
-    """
-
-    readers: Sequence[RasterReader]
-
     @classmethod
     def from_file_list(
         cls,
@@ -372,6 +413,7 @@ class RasterStackReader(BaseStackReader):
         keep_open: bool = False,
         num_threads: int = 1,
         nodata: float | None = None,
+        masked: bool = True,
     ) -> RasterStackReader:
         """Create a RasterStackReader from a list of files.
 
@@ -389,6 +431,9 @@ class RasterStackReader(BaseStackReader):
             Number of threads to use for reading.
         nodata : float, optional
             Manually set value to use for nodata pixels, by default None
+        masked : bool, optional
+            If True, reads in data as a MaskedArray, masking nodata values.
+            Default is True.
 
         Returns
         -------
@@ -400,7 +445,7 @@ class RasterStackReader(BaseStackReader):
             bands = [bands] * len(file_list)
 
         readers = [
-            RasterReader.from_file(f, band=b, keep_open=keep_open)
+            RasterReader.from_file(f, band=b, keep_open=keep_open, masked=masked)
             for (f, b) in zip(file_list, bands, strict=False)
         ]
         # Check if nodata values were found in the files
@@ -409,18 +454,16 @@ class RasterStackReader(BaseStackReader):
             nodata = nds.pop()
         return cls(file_list, readers, num_threads=num_threads, nodata=nodata)
 
-    def read_lon_lat(
-        self, lons, lats, masked: bool = False, max_workers: int = 4
-    ) -> np.ndarray:
+    def read_lon_lat(self, lons, lats) -> np.ndarray:
         """Read in raster values located at `lons`, `lats`."""
 
         def _read_single(reader):
-            return reader.read_lon_lat(lons, lats, masked=masked)
+            return reader.read_lon_lat(lons, lats, masked=reader.masked)
 
         results = thread_map(
             _read_single,
             self.readers,
-            max_workers=max_workers,
+            max_workers=self.num_threads,
             desc="Reading points from time series",
         )
         return np.array(list(results))
@@ -431,14 +474,11 @@ class RasterStackReader(BaseStackReader):
         lat: float,
         buffer_pixels: int = 0,
         op=round,
-        masked: bool = False,
     ):
         """Get a window of pixel values for a given longitude and latitude."""
         return np.array(
             [
-                reader.read_window(
-                    lon, lat, buffer_pixels=buffer_pixels, op=op, masked=masked
-                )
+                reader.read_window(lon, lat, buffer_pixels=buffer_pixels, op=op)
                 for reader in self.readers
             ]
         )

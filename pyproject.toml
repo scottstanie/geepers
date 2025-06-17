@@ -62,6 +62,8 @@ rasterio = "*"
 shapely = "*"
 requests = ">=2.32.4,<3"
 tqdm = ">=4.67.1,<5"
+rioxarray = ">=0.19.0,<0.20"
+dask = ">=2025.5.1,<2026"
 
 [tool.pixi.tasks]
 check = "pre-commit run -a"
@@ -76,6 +78,7 @@ pytest-recording = ">=0.13.2,<0.14"
 pytest-xdist = "*"
 ruff = "*"
 matplotlib = ">=3.10.3,<4"
+ipython = ">=9.3.0,<10"
 
 [tool.pixi.environments]
 test = ["test"]
