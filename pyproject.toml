@@ -43,11 +43,46 @@ Changelog = "https://github.com/isce-framework/geepers/releases"
 geepers = "geepers.cli:cli"
 
 
+[tool.pixi.project]
+channels = ["conda-forge"]
+platforms = ["osx-arm64", "linux-64"]
+
+[tool.pixi.pypi-dependencies]
+geepers = { path = ".", editable = true }
+
+[tool.pixi.dependencies]
+python = ">=3.11"
+pip = ">=21.3"
+git = "*"
+pandas = "*"
+geopandas-base = "*"
+xarray = "*"
+pyproj = "*"
+rasterio = "*"
+shapely = "*"
+requests = ">=2.32.4,<3"
+tqdm = ">=4.67.1,<5"
+
+[tool.pixi.tasks]
+check = "pre-commit run -a"
+test = "pytest"
+
+[tool.pixi.feature.test.dependencies]
+pre-commit = "*"
+pytest = "*"
+pytest-cov = "*"
+pytest-randomly = "*"
+pytest-recording = ">=0.13.2,<0.14"
+pytest-xdist = "*"
+ruff = "*"
+matplotlib = ">=3.10.3,<4"
+
+[tool.pixi.environments]
+test = ["test"]
+
 # extra requirements: `pip install .[docs]` or `pip install .[docs]`
 [tool.setuptools.dynamic.optional-dependencies.docs]
 file = ["docs/requirements.txt"]
-[tool.setuptools.dynamic.optional-dependencies.test]
-file = ["tests/requirements.txt"]
 
 [tool.setuptools_scm]
 # https://github.com/pypa/setuptools_scm#configuration-parameters
@@ -124,3 +159,6 @@ filterwarnings = [
   "ignore:datetime.datetime.utcfromtimestamp.*:DeprecationWarning",
   "ignore:.*shapely.geos.*:DeprecationWarning",
 ]
+
+[dependency-groups]
+test = ["opera-utils>=0.23.0,<0.24"]

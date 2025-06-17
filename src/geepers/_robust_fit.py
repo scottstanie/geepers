@@ -1,14 +1,17 @@
-import warnings
-
-import jax.numpy as jnp
-from jax.typing import ArrayLike
+from typing import Any
 
 try:
+    import jax.numpy as jnp
     from dolphin.timeseries import (
         least_absolute_deviations,
     )  # TODO: port just this part
+    from jax.typing import ArrayLike
 except ImportError:
-    warnings.warn("dolphin not installed, cannot use robust_linear_fit", stacklevel=2)
+    print("dolphin not installed, cannot use robust_linear_fit")
+    # import warnings
+    # warnings.warn("dolphin not installed, cannot use robust_linear_fit", stacklevel=2)
+    ArrayLike = Any
+    import numpy as jnp
 
 
 def robust_linear_fit(

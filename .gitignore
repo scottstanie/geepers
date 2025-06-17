@@ -156,3 +156,7 @@ Thumbs.db
 *~
 *.swp
 .vscode
+
+# pixi environments
+.pixi
+*.egg-info
