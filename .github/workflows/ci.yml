@@ -32,7 +32,7 @@ jobs:
       - name: Install environment
         run: |
           pixi install
-          pixi install -e . test
+          pixi install -e test
 
       - name: Test
         run: |
