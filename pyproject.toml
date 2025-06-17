@@ -60,6 +60,8 @@ xarray = "*"
 pyproj = "*"
 rasterio = "*"
 shapely = "*"
+requests = ">=2.32.4,<3"
+tqdm = ">=4.67.1,<5"
 
 [tool.pixi.tasks]
 check = "pre-commit run -a"
@@ -70,8 +72,10 @@ pre-commit = "*"
 pytest = "*"
 pytest-cov = "*"
 pytest-randomly = "*"
+pytest-recording = ">=0.13.2,<0.14"
 pytest-xdist = "*"
 ruff = "*"
+matplotlib = ">=3.10.3,<4"
 
 [tool.pixi.environments]
 test = ["test"]
@@ -155,3 +159,6 @@ filterwarnings = [
   "ignore:datetime.datetime.utcfromtimestamp.*:DeprecationWarning",
   "ignore:.*shapely.geos.*:DeprecationWarning",
 ]
+
+[dependency-groups]
+test = ["opera-utils>=0.23.0,<0.24"]
