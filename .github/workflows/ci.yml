@@ -36,4 +36,4 @@ jobs:
 
       - name: Test
         run: |
-          pixi run test
+          pixi run -e test pytest
