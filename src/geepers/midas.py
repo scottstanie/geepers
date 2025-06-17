@@ -1,6 +1,5 @@
 """Python conversion of MIDAS velocity calculation.
 
-
 Original code: https://geodesy.unr.edu/MIDAS_release.tar
 Original author: Geoff Blewitt.  Copyright (C) 2015.
 
@@ -36,6 +35,7 @@ class MidasResult:
         Scatter in velocity estimates from pairs (m/year)
     residuals : np.ndarray
         Residuals to linear fit (m)
+
     """
 
     velocity: float = field(  # v50 in original code
@@ -53,13 +53,11 @@ class MidasResult:
     velocity_scatter: float = field(  # sd
         metadata={"help": "Scatter in velocity estimates from pairs (m/year)"}
     )
-    residuals: np.ndarray = field(  # r
-        metadata={"help": "Residuals to linear fit (m)"}
-    )
+    residuals: np.ndarray = field(metadata={"help": "Residuals to linear fit (m)"})  # r
 
     def __mul__(self, x):
-        if not isinstance(x, (int, float)):
-            return NotImplemented("Only scalar multiplication is supported")
+        if not isinstance(x, int | float):
+            return NotImplemented
 
         return MidasResult(
             velocity=self.velocity * x,
@@ -125,6 +123,7 @@ def select_pairs(
         Number of pairs selected
     pairs : np.ndarray
         Array of shape (n,2) containing indices of selected pairs
+
     """
     m = len(times)
     pairs = np.zeros((max_n, 2), dtype=int)
@@ -198,6 +197,7 @@ def midas(
     MidasResult
         Object containing velocity (v50), uncertainty (sv), intercept (x50),
         outlier fraction (f), scatter estimate (sd), and residuals (r)
+
     """
     m = len(times)
     max_n = 19999
@@ -249,6 +249,17 @@ def midas(
     # Trim outliers
     c = 2.0 * sd
     v_clean = v[d < c]
+
+    # Check if any pairs remain after outlier removal
+    if len(v_clean) == 0:
+        return MidasResult(
+            velocity=np.nan,
+            velocity_uncertainty=np.nan,
+            reference_position=np.nan,
+            outlier_fraction=1.0,
+            velocity_scatter=np.nan,
+            residuals=np.full(len(times), np.nan),
+        )
 
     # Recompute median
     v50 = np.median(v_clean)

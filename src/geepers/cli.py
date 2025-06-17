@@ -2,7 +2,6 @@
 
 Examples
 --------
-
     python gps_insar_comparison.py --help    # show usage
     python gps_insar_comparison.py \
         --timeseries-files data/ts/*.tif \
@@ -35,11 +34,11 @@ from geepers.constants import SENTINEL_1_WAVELENGTH
 from geepers.io import RasterReader, RasterStackReader, get_raster_units
 
 __all__ = [
-    "create_tidy_df",
-    "compare_relative_gps_insar",
-    "process_insar_data",
     "_convert_to_meters",
+    "compare_relative_gps_insar",
+    "create_tidy_df",
     "main",
+    "process_insar_data",
 ]
 
 logger = logging.getLogger(__name__)
@@ -60,6 +59,7 @@ def create_tidy_df(station_to_merged_df: Mapping[str, pd.DataFrame]) -> pd.DataF
     pandas.DataFrame
         Long-form dataframe with columns ``station``, ``date``, ``measurement``
         and ``value`` suitable for plotting with *seaborn* or *altair*.
+
     """
     dfs: list[pd.DataFrame] = []
     for station, df in station_to_merged_df.items():
@@ -97,9 +97,11 @@ def compare_relative_gps_insar(
     -------
     pandas.DataFrame
         Tidy dataframe with the relative series and their differences.
+
     """
     if reference_station not in station_to_merged_df:
-        raise ValueError(f"Reference station '{reference_station}' not found.")
+        msg = f"Reference station '{reference_station}' not found."
+        raise ValueError(msg)
 
     ref_df = station_to_merged_df[reference_station]
     results: list[pd.DataFrame] = []
@@ -163,6 +165,7 @@ def process_insar_data(
         A mapping from station name to a dataframe that contains *los_insar*
         (in **metres**), *temporal_coherence* and *similarity* columns indexed
         by acquisition date.
+
     """
     lons = df_gps_stations.lon.to_numpy()
     lats = df_gps_stations.lat.to_numpy()
@@ -224,6 +227,7 @@ def _convert_to_meters(
     -------
     numpy.ndarray
         Displacements in metres.
+
     """
     phase2disp = float(wavelength) / (4.0 * np.pi)
     input_units = get_raster_units(filename)
@@ -281,6 +285,7 @@ def main(
         Per-station linear rates (mm/yr) computed from the combined table.
     ``relative_comparison.csv``
         Relative GPS/InSAR displacements if *reference_station* was specified.
+
     """
     output_dir.mkdir(parents=True, exist_ok=True)
     logger.info("%d time-series rasters → %s", len(timeseries_files), output_dir)
@@ -298,10 +303,11 @@ def main(
     file_dates = [get_dates(f, fmt=file_date_fmt) for f in timeseries_files]
     ref_sec_dates = np.asarray(file_dates)
     if np.unique(ref_sec_dates[:, 0]).size > 1:
-        raise ValueError(
+        msg = (
             "Multiple reference dates detected in the stack - "
             "processing currently assumes a single reference epoch."
         )
+        raise ValueError(msg)
 
     start_date, end_date = np.min(ref_sec_dates), np.max(ref_sec_dates)
     logger.info("Reference→secondary range: %s → %s", start_date, end_date)
@@ -328,23 +334,26 @@ def main(
     station_to_los_gps: dict[str, pd.DataFrame] = {}
 
     for station_row, df in tqdm(
-        zip(df_gps_stations.itertuples(), df_gps_list),
+        zip(df_gps_stations.itertuples(), df_gps_list, strict=False),
         total=len(df_gps_stations),
         desc="Projecting GPS→LOS",
     ):
         if df is None:
-            warnings.warn(f"Failed to download {station_row.Index}; skipping.")
+            warnings.warn(
+                f"Failed to download {station_row.Index}; skipping.", stacklevel=2
+            )
             continue
 
         enu_vec = los_reader.read_lon_lat(
             station_row.lon, station_row.lat, masked=True
         ).ravel()
         if np.allclose(enu_vec, 0):
-            warnings.warn(f"{station_row.Index} lies outside LOS raster; skipping.")
+            warnings.warn(
+                f"{station_row.Index} lies outside LOS raster; skipping.", stacklevel=2
+            )
             continue
 
         e, n, u = enu_vec
-        df = df.copy()
         df["los_gps"] = df.east * e + df.north * n + df.up * u
         df["los_gps"] -= df["los_gps"].iloc[:10].mean()  # remove arbitrary offset
         station_to_los_gps[station_row.Index] = df[["los_gps"]]

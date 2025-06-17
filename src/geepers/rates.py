@@ -8,9 +8,8 @@ from .midas import MidasResult, midas
 
 try:
     from ._robust_fit import robust_linear_fit
-except ImportError as e:
-    print(f"Failed to import `robust_linear_fit`: e")
-    robust_linear_fit
+except ImportError:
+    print("Failed to import `robust_linear_fit`: e")
 
 EMPTY_MIDAS = MidasResult(np.nan, np.nan, np.nan, np.nan, np.nan, np.array([]))
 
@@ -26,6 +25,9 @@ def calculate_rates(
         DataFrame with columns: station, date, measurement, value
     outlier_threshold : float
         Remove measurements with absolute values greater than this
+    to_mm : bool
+        If True, output is in mm/year.
+        Otherwise, units are no changed (meters/year)
 
     Returns
     -------
@@ -33,6 +35,7 @@ def calculate_rates(
         DataFrame with GPS and InSAR rates for each station
         If `to_mm` is True, output is in mm/year.
         Otherwise, units are no changed (meters/year)
+
     """
     # Convert date to datetime if it's not already
     df["date"] = pd.to_datetime(df["date"])
@@ -140,6 +143,6 @@ def _get_midas_rate(cur_df_measurement):
 def _dump_midas(
     m: MidasResult,
     prefix: str = "",
-    skip_cols: tuple[str] = ("residuals", "reference_position"),
-) -> dict:
+    skip_cols: tuple[str, ...] = ("residuals", "reference_position"),
+) -> dict[str, float]:
     return {f"{prefix}{k}": v for k, v in asdict(m).items() if k not in skip_cols}

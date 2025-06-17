@@ -1,8 +1,14 @@
-from typing import Tuple, Union
+import warnings
 
 import jax.numpy as jnp
-from dolphin.timeseries import least_absolute_deviations  # TODO: port just this part
 from jax.typing import ArrayLike
+
+try:
+    from dolphin.timeseries import (
+        least_absolute_deviations,
+    )  # TODO: port just this part
+except ImportError:
+    warnings.warn("dolphin not installed, cannot use robust_linear_fit", stacklevel=2)
 
 
 def robust_linear_fit(
@@ -10,7 +16,7 @@ def robust_linear_fit(
     y: ArrayLike,
     w: ArrayLike | None = None,
     return_cov: bool = False,
-) -> Union[jnp.ndarray, Tuple[jnp.ndarray, jnp.ndarray]]:
+) -> jnp.ndarray | tuple[jnp.ndarray, jnp.ndarray]:
     """Perform robust linear fitting using L1 norm (Least Absolute Deviations) via ADMM.
 
     This function combines traditional linear fitting with ADMM-based L1 optimization
@@ -33,6 +39,7 @@ def robust_linear_fit(
         The solution vector (N,) where N is the polynomial order + 1
     covariance : jnp.ndarray, optional
         The covariance matrix (N, N), returned if return_cov=True
+
     """
     deg = 1
     order = deg + 1
@@ -40,11 +47,14 @@ def robust_linear_fit(
     # Validate inputs
     x_arr, y_arr = jnp.asarray(x), jnp.asarray(y)
     if x_arr.ndim != 1:
-        raise TypeError("expected 1D vector for x")
+        msg = "expected 1D vector for x"
+        raise TypeError(msg)
     if y_arr.ndim not in (1, 2):
-        raise TypeError("expected 1D or 2D array for y")
+        msg = "expected 1D or 2D array for y"
+        raise TypeError(msg)
     if x_arr.shape[0] != y_arr.shape[0]:
-        raise TypeError("expected x and y to have same length")
+        msg = "expected x and y to have same length"
+        raise TypeError(msg)
 
     # Set up design matrix A
     A = jnp.vander(x_arr, order)
@@ -53,9 +63,11 @@ def robust_linear_fit(
     if w is not None:
         w_arr = jnp.asarray(w)
         if w_arr.ndim != 1:
-            raise TypeError("expected a 1-d array for weights")
+            msg = "expected a 1-d array for weights"
+            raise TypeError(msg)
         if w_arr.shape[0] != y_arr.shape[0]:
-            raise TypeError("expected w and y to have the same length")
+            msg = "expected w and y to have the same length"
+            raise TypeError(msg)
         A *= w_arr[:, jnp.newaxis]
         if y_arr.ndim == 2:
             y_arr = y_arr * w_arr[:, jnp.newaxis]
