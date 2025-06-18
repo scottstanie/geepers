@@ -75,10 +75,10 @@ def get_stations_within_image(
 
     if reader.crs != "EPSG:4326":
         bounds = rasterio.warp.transform_bounds(
-            reader.crs, "EPSG:4326", *reader.da.rio.bounds
+            reader.crs, "EPSG:4326", *reader.da.rio.bounds()
         )
     else:
-        bounds = reader.da.rio.bounds
+        bounds = reader.da.rio.bounds()
     bounds_poly = box(*bounds)
 
     # Get all GPS stations

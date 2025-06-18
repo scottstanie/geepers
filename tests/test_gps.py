@@ -3,14 +3,18 @@
 from __future__ import annotations
 
 from pathlib import Path
-from unittest.mock import Mock, patch
+from unittest.mock import patch
 
 import geopandas as gpd
+import numpy as np
 import pandas as pd
 import pytest
 import requests
+import rioxarray  # noqa: F401
+import xarray as xr
 
 import geepers.gps as gps
+from geepers.io import XarrayReader
 
 
 class TestDownloadStationData:
@@ -83,14 +87,24 @@ class TestGetStationsWithinImage:
     @pytest.fixture
     def mock_reader(
         self,
+        tmp_path,
         bounds=(-156.5, 18.0, -154.0, 20.0),
         crs="EPSG:4326",
     ):
-        """Create a mock XarrayReader for testing."""
-        reader = Mock()
-        reader.crs = crs
-        reader.da.rio.bounds = bounds
-        return reader
+        """Create XarrayReader for testing."""
+
+        x = np.linspace(bounds[0], bounds[2], 10)
+        y = np.linspace(bounds[1], bounds[3], 10)
+        da = xr.DataArray(
+            np.zeros((10, 10)),
+            coords={"y": y, "x": x},
+            dims=["y", "x"],
+            attrs={"units": "meters"},
+        )
+        da.rio.write_crs(crs, inplace=True)
+        da.rio.to_raster(tmp_path / "test.tif")
+
+        return XarrayReader.from_file(tmp_path / "test.tif")
 
     def test_stations_within_bounds(self, station_gdf, mock_reader):
         """Both stations fall inside the mocked raster bounds."""
@@ -110,17 +124,13 @@ class TestGetStationsWithinImage:
             assert len(result) == 1
             assert result.name.iloc[0] == "CRIM"
 
-    def test_reader_utm(self, station_gdf):
+    def test_reader_utm(self, station_gdf, mock_reader):
         """Test that UTM CRS is handled correctly."""
-        reader = Mock()
-        reader.crs = "EPSG:32611"
-        bounds_lonlat = (-156.5, 18.0, -154.0, 20.0)
+        from copy import deepcopy
 
-        # Convert the bounds to UTM
-        from rasterio.warp import transform_bounds
-
-        bounds_utm = transform_bounds("EPSG:4326", reader.crs, *bounds_lonlat)
-        reader.da.rio.bounds = bounds_utm
+        reader = deepcopy(mock_reader)
+        utm_da = mock_reader.da.rio.reproject("EPSG:32611")
+        reader.da = utm_da
 
         with patch("geepers.gps.read_station_llas", return_value=station_gdf):
             result = gps.get_stations_within_image(reader, mask_invalid=False)
