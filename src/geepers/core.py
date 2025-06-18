@@ -6,12 +6,15 @@ import logging
 import warnings
 from collections.abc import Mapping, Sequence
 from pathlib import Path
+from typing import Annotated
 
 import numpy as np
 import pandas as pd
 import requests
+import tyro
 from tqdm.auto import tqdm
 from tqdm.contrib.concurrent import thread_map
+from tqdm.dask import TqdmCallback
 
 import geepers.gps
 import geepers.rates
@@ -154,7 +157,11 @@ def process_insar_data(
     lats = df_gps_stations.lat.to_numpy()
 
     # los_insar gets stacks as (n_stations, len(time) ), each row one station
-    los_insar = np.stack(reader.read_lon_lat(lons, lats))
+    from dask import compute
+
+    with TqdmCallback(desc="Sampling InSAR data locations"):
+        r = compute(reader.read_lon_lat(lons, lats))
+    los_insar = np.stack(r).squeeze()
 
     # # TODO: make a list of variables to sample, doesn't have to be just one single
     # # band reader like I made here:
@@ -174,7 +181,9 @@ def process_insar_data(
         los_insar *= PHASE_TO_METERS
 
     station_to_insar: dict[str, pd.DataFrame] = {}
-    for i, station in enumerate(df_gps_stations.index):
+    for i, station in tqdm(
+        enumerate(df_gps_stations.index), total=len(df_gps_stations)
+    ):
         data = {
             "los_insar": los_insar[i],
         }
@@ -190,15 +199,16 @@ def process_insar_data(
 
 def main(
     *,
-    los_enu_file: Path | str,
+    los_enu_file: Annotated[Path | str, tyro.conf.arg(aliases=["--los"])],
     timeseries_files: Sequence[Path | str] | None = None,
     timeseries_stack: Path | str | None = None,
-    output_dir: Path = Path("GPS"),
+    output_dir: Annotated[Path, tyro.conf.arg(aliases=["-o"])] = Path("./GPS"),
     file_date_fmt: str = "%Y%m%d",
-    reference_station: str | None = None,
+    stack_data_var: str | None = "displacement",
+    reference_station: Annotated[str | None, tyro.conf.arg(aliases=["--ref"])] = None,
     # temporal_coherence_file: Path | str | None = None,
     # similarity_file: Path | None = None,
-    compute_rates: bool = True,
+    compute_rates: Annotated[bool, tyro.conf.arg(aliases=["--rates"])] = False,
 ) -> None:
     """Process InSAR time-series and compare them to GPS displacements.
 
@@ -207,10 +217,12 @@ def main(
     los_enu_file
         Three-band GeoTIFF with the line-of-sight unit vector expressed in the
         local East-North-Up coordinate frame.
+        LOS convention is that the unit vectors point from the ground toward
+        the satellite (i.e. the "up" component is positive).
     timeseries_files
-        list of wrapped-phase (or displacement) rasters, *one per acquisition*.
-        File names **must** encode the reference and secondary dates using
-        *file_date_fmt*.
+        List of wrapped-phase (or displacement) rasters, one per acquisition.
+        File names must encode the reference and secondary dates using
+        `file_date_fmt`.
     timeseries_stack
         Path to an xarray stack of wrapped-phase (or displacement) rasters.
         Alternative to `timeseries_files`
@@ -219,7 +231,10 @@ def main(
         not exist.
     file_date_fmt
         ``strftime`` pattern describing how dates are embedded in
-        *timeseries_files*.
+        `timeseries_files`.
+    stack_data_var
+        Name of the variable in the timeseries stack to use for InSAR data.
+        If `None`, the `timeseries_stack` must have only one data variable.
     reference_station
         Optional GPS station name - if provided, relative displacements are
         computed with respect to this station.
@@ -251,7 +266,7 @@ def main(
             msg = "Must provide either timeseries_files or timeseries_stack"
             raise ValueError(msg)
 
-        insar_reader = XarrayReader.from_file(timeseries_stack)
+        insar_reader = XarrayReader.from_file(timeseries_stack, data_var=stack_data_var)
     else:
         insar_reader = XarrayReader.from_file_list(timeseries_files, file_date_fmt)
 
@@ -318,6 +333,7 @@ def main(
         station_to_los_gps[station_row.Index] = df[["los_gps"]]
 
     # Sample InSAR rasters at station locations
+    logger.info("Sampling InSAR rasters at station locations")
     station_to_insar = process_insar_data(
         reader=insar_reader,
         df_gps_stations=df_gps_stations,
@@ -326,6 +342,7 @@ def main(
     )
 
     # Merge GPS and InSAR tables per station
+    logger.info("Merging GPS and InSAR tables per station")
     station_to_merged: dict[str, pd.DataFrame] = {}
     for name in tqdm(station_to_los_gps, desc="Merging GPS and InSAR"):
         station_to_merged[name] = pd.merge(
