@@ -36,4 +36,4 @@ jobs:
 
       - name: Test
         run: |
-          pixi run -e test pytest
+          pixi run -e test pytest --record-mode none
