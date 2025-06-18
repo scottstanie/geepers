@@ -267,7 +267,9 @@ def main(
     #     if similarity_file is not None else None
     # )
 
-    df_gps_stations = geepers.gps.get_stations_within_image(insar_reader)
+    df_gps_stations = geepers.gps.get_stations_within_image(
+        insar_reader, mask_invalid=False
+    )
     df_gps_stations.set_index("name", inplace=True)
 
     start_date = insar_reader.da.time[0].to_pandas()
@@ -307,9 +309,7 @@ def main(
         )
         assert enu_vec.shape == (3,)
         if np.allclose(enu_vec, 0):
-            warnings.warn(
-                f"{station_row.Index} lies outside LOS raster; skipping.", stacklevel=2
-            )
+            logger.info(f"{station_row.Index} lies has nodata in LOS raster; skipping.")
             continue
 
         e, n, u = enu_vec

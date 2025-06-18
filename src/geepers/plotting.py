@@ -1,7 +1,12 @@
+from pathlib import Path
+
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from matplotlib.ticker import MultipleLocator
+
+from geepers import gps
+from geepers.io import XarrayReader
 
 
 def create_comparison_plot(df: pd.DataFrame) -> tuple[plt.Figure, plt.Axes]:
@@ -160,4 +165,36 @@ def create_rate_comparison_plot(
         bbox=props,
     )
     fig.colorbar(scatter_img, ax=ax, label=quality_column)
+    return fig, ax
+
+
+def plot_stations_on_map(
+    filename: Path | str, units: str | None = None
+) -> tuple[plt.Figure, plt.Axes]:
+    """Plot locations of GPS stations contained in `filename`.
+
+    Parameters
+    ----------
+    filename : Path | str
+        Path to the InSAR stack file.
+    units : str | None, optional
+        Units of the InSAR stack. Default is None.
+
+    Returns
+    -------
+    fig : plt.Figure
+        The figure object
+    ax : plt.Axes
+        The axes object
+
+    """
+    reader = XarrayReader.from_file(filename, units=units)
+    gdf = gps.get_stations_within_image(reader)
+    fig, ax = plt.subplots(figsize=(6, 5))
+    da_lonlat = reader.da.rio.reproject("EPSG:4326")
+    da_lonlat.plot.imshow(ax=ax, cmap="gray")
+    gdf.plot(ax=ax, color="red", markersize=10)
+    # Add labels from the names
+    for name, geom in zip(gdf.name, gdf.geometry, strict=True):
+        ax.text(geom.x, geom.y, name, fontsize=8)
     return fig, ax
