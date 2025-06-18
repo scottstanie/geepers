@@ -20,7 +20,7 @@ def test_main(tmp_path, monkeypatch):
         los_enu_file=data_dir / "hawaii_los_enu.tif",
         timeseries_files=sorted(data_dir.glob("displacement_*.tif")),
         output_dir=tmp_path / "GPS",
-        compute_rates=False,
+        compute_rates=True,
     )
     assert (tmp_path / "GPS").exists()
 

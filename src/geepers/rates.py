@@ -107,7 +107,7 @@ def calculate_rates(
         )
 
     # Calculate rates for each station
-    rates = df_wide.groupby("station").apply(calc_station_metrics)
+    rates = df_wide.groupby("station").apply(calc_station_metrics, include_groups=False)
 
     # Remove stations where either rate is NaN
     # rates = rates.dropna()
