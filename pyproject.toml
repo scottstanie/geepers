@@ -30,21 +30,6 @@ license = { file = "LICENSE.txt" }
 # dependencies will be read from text files
 dynamic = ["version", "optional-dependencies"]
 
-dependencies = [
-  # Sync with pixi.dependencies? any auto-way?
-  "pandas",
-  "geopandas-base",
-  "xarray",
-  "dask",
-  "pyproj",
-  "rasterio",
-  "rioxarray",
-  "shapely",
-  "requests",
-  "tqdm",
-  "zarr",
-]
-
 [project.urls]
 Homepage = "https://github.com/isce-framework/geepers"
 "Bug Tracker" = "https://github.com/isce-framework/geepers/issues"

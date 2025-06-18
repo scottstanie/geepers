@@ -2494,13 +2494,9 @@ packages:
   timestamp: 1748101667956
 - pypi: ./
   name: geepers
-  version: 0.0.post1.dev53+g9421751.d20250618
-  sha256: cf210b9843f59353258c3a6f16cdb526c0ccb6a0c82daa0f35ac4217316efb87
+  version: 0.0.post1.dev66+gdbab875.d20250618
+  sha256: fc0e6df435efccf25a06bb9858558e9e4f4728fd34cd8fe03c4580cb0b360fb9
   requires_dist:
-  - pyproj
-  - shapely
-  - rasterio
-  - tyro
   - mkdocs ; extra == 'docs'
   - mkdocs-gen-files ; extra == 'docs'
   - mkdocs-jupyter ; extra == 'docs'
