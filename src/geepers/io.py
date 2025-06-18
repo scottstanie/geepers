@@ -102,6 +102,11 @@ class StackReader(DatasetReader, Protocol):
         """Read in pixel values in a spatial window centered at `lon`, `lat`."""
         ...
 
+    @property
+    def units(self) -> str:
+        """Units of the dataset."""
+        ...
+
 
 @dataclass
 class RasterReader(DatasetReader):
@@ -378,6 +383,10 @@ class XarrayStackReader(StackReader):
         x, y = self._transformer_from_lonlat.transform(lon, lat)
         point_data = self.da.sel(x=x, y=y, method="nearest")
         return np.atleast_1d(point_data.values)
+
+    @property
+    def units(self) -> str:
+        return self.da.rio.units
 
 
 @dataclass
