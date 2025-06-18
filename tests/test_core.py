@@ -1,12 +1,19 @@
 from pathlib import Path
 
 import pandas as pd
+import pytest
 
 from geepers.core import main
 
 
+@pytest.mark.vcr
 def test_main(tmp_path):
-    data_dir = Path(__file__).parent / "data"
+    data_dir = Path(__file__).parent / "data/hawaii"
+    import geepers.gps
+
+    geepers.gps.GPS_DIR = tmp_path / "unr-data"
+    geepers.gps.GPS_DIR.mkdir(exist_ok=True, parents=True)
+
     main(
         los_enu_file=data_dir / "hawaii_los_enu.tif",
         timeseries_files=sorted(data_dir.glob("displacement_*.tif")),
