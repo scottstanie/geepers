@@ -30,7 +30,20 @@ license = { file = "LICENSE.txt" }
 # dependencies will be read from text files
 dynamic = ["version", "optional-dependencies"]
 
-dependencies = ["pyproj", "shapely", "rasterio", "tyro"]
+dependencies = [
+  # Sync with pixi.dependencies? any auto-way?
+  "pandas",
+  "geopandas-base",
+  "xarray",
+  "dask",
+  "pyproj",
+  "rasterio",
+  "rioxarray",
+  "shapely",
+  "requests",
+  "tqdm",
+  "zarr",
+]
 
 [project.urls]
 Homepage = "https://github.com/isce-framework/geepers"
@@ -65,7 +78,7 @@ rioxarray = ">=0.19.0"
 shapely = "*"
 requests = ">=2.32.4"
 tqdm = ">=4.67.1"
-zarr = ">=3.0.8,<4"
+zarr = "*"
 
 [tool.pixi.tasks]
 check = "pre-commit run -a"
