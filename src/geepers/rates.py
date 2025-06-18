@@ -84,8 +84,14 @@ def calculate_rates(
                 # insar_midas = const * _get_group_midas(group, "los_insar")
 
         if not np.isnan(insar_velocity):
-            tcoh = group["temporal_coherence"].dropna().iloc[0]
-            similarity = group["similarity"].dropna().iloc[0]
+            tcoh = (
+                group["temporal_coherence"].dropna().iloc[0]
+                if "temporal_coherence" in group
+                else None
+            )
+            similarity = (
+                group["similarity"].dropna().iloc[0] if "similarity" in group else None
+            )
 
         midas_outputs = _dump_midas(gps_midas, prefix="gps_")
         # midas_outputs |= _dump_midas(insar_midas, prefix="insar_")
@@ -104,8 +110,6 @@ def calculate_rates(
         )
 
     # Calculate rates for each station
-    # breakpoint()
-    # rates = df_wide.groupby("station").apply(calc_station_metrics).reset_index()
     rates = df_wide.groupby("station").apply(calc_station_metrics)
 
     # Remove stations where either rate is NaN

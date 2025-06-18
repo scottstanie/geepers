@@ -3,14 +3,18 @@
 from __future__ import annotations
 
 from pathlib import Path
-from unittest.mock import Mock, patch
+from unittest.mock import patch
 
 import geopandas as gpd
+import numpy as np
 import pandas as pd
 import pytest
 import requests
+import rioxarray  # noqa: F401
+import xarray as xr
 
 import geepers.gps as gps
+from geepers.io import XarrayReader
 
 
 class TestDownloadStationData:
@@ -81,46 +85,55 @@ def station_gdf(station_df: pd.DataFrame) -> gpd.GeoDataFrame:
 
 class TestGetStationsWithinImage:
     @pytest.fixture
-    def mock_src(
+    def mock_reader(
         self,
+        tmp_path,
         bounds=(-156.5, 18.0, -154.0, 20.0),
         crs="EPSG:4326",
-        index_side_effect=None,
-        read_side_effect=None,
     ):
-        m = Mock()
-        m.bounds = bounds
-        m.crs = crs
-        if index_side_effect is not None:
-            m.index.side_effect = index_side_effect
-        if read_side_effect is not None:
-            m.read.side_effect = read_side_effect
-        return m
+        """Create XarrayReader for testing."""
 
-    def test_stations_within_bounds(self, station_gdf, mock_src):
+        x = np.linspace(bounds[0], bounds[2], 10)
+        y = np.linspace(bounds[1], bounds[3], 10)
+        da = xr.DataArray(
+            np.zeros((10, 10)),
+            coords={"y": y, "x": x},
+            dims=["y", "x"],
+            attrs={"units": "meters"},
+        )
+        da.rio.write_crs(crs, inplace=True)
+        da.rio.to_raster(tmp_path / "test.tif")
+
+        return XarrayReader.from_file(tmp_path / "test.tif")
+
+    def test_stations_within_bounds(self, station_gdf, mock_reader):
         """Both stations fall inside the mocked raster bounds."""
-        with (
-            patch("geepers.gps.read_station_llas", return_value=station_gdf),
-            patch("rasterio.open") as mock_rio,
-        ):
-            mock_rio.return_value.__enter__.return_value = mock_src
-
-            result = gps.get_stations_within_image("dummy.tif", mask_invalid=False)
+        with patch("geepers.gps.read_station_llas", return_value=station_gdf):
+            result = gps.get_stations_within_image(mock_reader, mask_invalid=False)
 
             assert len(result) == 2
             assert set(result.name) == {"CRIM", "OUTL"}
 
-    def test_exclude_stations(self, station_gdf, mock_src):
+    def test_exclude_stations(self, station_gdf, mock_reader):
         """Explicitly exclude OUTL from the returned GeoDataFrame."""
-        with (
-            patch("geepers.gps.read_station_llas", return_value=station_gdf),
-            patch("rasterio.open") as mock_rio,
-        ):
-            mock_rio.return_value.__enter__.return_value = mock_src
-
+        with patch("geepers.gps.read_station_llas", return_value=station_gdf):
             result = gps.get_stations_within_image(
-                "dummy.tif", mask_invalid=False, exclude_stations=["OUTL"]
+                mock_reader, mask_invalid=False, exclude_stations=["OUTL"]
             )
 
             assert len(result) == 1
             assert result.name.iloc[0] == "CRIM"
+
+    def test_reader_utm(self, station_gdf, mock_reader):
+        """Test that UTM CRS is handled correctly."""
+        from copy import deepcopy
+
+        reader = deepcopy(mock_reader)
+        utm_da = mock_reader.da.rio.reproject("EPSG:32611")
+        reader.da = utm_da
+
+        with patch("geepers.gps.read_station_llas", return_value=station_gdf):
+            result = gps.get_stations_within_image(reader, mask_invalid=False)
+
+            assert len(result) == 2
+            assert set(result.name) == {"CRIM", "OUTL"}

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import datetime
 import logging
+import warnings
 from collections.abc import Sequence
 from pathlib import Path
 
@@ -19,6 +20,7 @@ import requests
 from shapely.geometry import box
 
 from geepers import utils
+from geepers.io import XarrayReader
 
 from ._types import PathOrStr
 
@@ -35,21 +37,21 @@ GPS_DIR.mkdir(exist_ok=True, parents=True)
 STATION_LLH_URL = "https://geodesy.unr.edu/NGLStationPages/llh.out"
 STATION_LLH_FILE = str(GPS_DIR / "station_llh_all_{today}.csv")
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("geepers")
 
 
 def get_stations_within_image(
-    filename: Path | str,
-    bad_vals: Sequence[float] | None = None,
+    reader: XarrayReader,
     mask_invalid: bool = True,
+    bad_vals: Sequence[float] | None = None,
     exclude_stations: Sequence[str] | None = None,
 ) -> gpd.GeoDataFrame:
     """Find GPS stations within a given geocoded image.
 
     Parameters
     ----------
-    filename : str
-        Path to the geocoded image file (must be readable by rasterio).
+    reader : XarrayReader
+        Reader object containing the geocoded DataArray.
     bad_vals : list of float, optional
         Values (besides NaN) indicating no data. Default is [0].
     mask_invalid : bool, optional
@@ -71,34 +73,25 @@ def get_stations_within_image(
     if bad_vals is None:
         bad_vals = [0]
 
+    if reader.crs != "EPSG:4326":
+        bounds = rasterio.warp.transform_bounds(
+            reader.crs, "EPSG:4326", *reader.da.rio.bounds()
+        )
+    else:
+        bounds = reader.da.rio.bounds()
+    bounds_poly = box(*bounds)
+
     # Get all GPS stations
     gdf_all = read_station_llas(to_geodataframe=True)
-    # Read the image metadata
-    gdf_all.set_crs(epsg=4326, inplace=True)  # Assuming WGS84
 
-    # Read the image metadata
-    with rasterio.open(filename) as src:
-        image_poly = box(*src.bounds)
-        image_crs = src.crs
+    gdf_within = gdf_all.clip(bounds_poly)
 
-    # Reproject if necessary
-    if image_crs != gdf_all.crs:
-        gdf_all = gdf_all.to_crs(image_crs)
-
-    # Filter stations within the image bounds
-    gdf_within = gdf_all[gdf_all.geometry.within(image_poly)].copy()
-
+    # TODO: this should probably be moved elsewhere
+    # this is doing too much as is
     if mask_invalid:
-        with rasterio.open(filename) as src:
-            valid_stations = []
-            for idx, row in gdf_within.iterrows():
-                x, y = row.geometry.x, row.geometry.y
-                py, px = src.index(x, y)
-                val = src.read(1, window=((py, py + 1), (px, px + 1)))[0][0]
-                if not (np.isnan(val) or any(np.isclose(val, bv) for bv in bad_vals)):
-                    valid_stations.append(idx)
-
-        gdf_within = gdf_within.loc[valid_stations]
+        warnings.warn(
+            "mask_invalid is deprecated implemented yet", UserWarning, stacklevel=2
+        )
 
     # Exclude specified stations
     if exclude_stations:
@@ -108,7 +101,6 @@ def get_stations_within_image(
 
     # Reset index for cleaner output
     gdf_within.reset_index(drop=True, inplace=True)
-
     return gdf_within
 
 
@@ -386,9 +378,9 @@ def read_station_llas(
     df.loc[:, "lon"] = df.lon - (np.round(df.lon / 360) * 360)
 
     if to_geodataframe:
-        import geopandas as gpd
-
-        return gpd.GeoDataFrame(df, geometry=gpd.points_from_xy(df.lon, df.lat))
+        return gpd.GeoDataFrame(
+            df, geometry=gpd.points_from_xy(df.lon, df.lat), crs="EPSG:4326"
+        )
     else:
         return df
 

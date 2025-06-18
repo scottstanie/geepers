@@ -9,7 +9,7 @@ interactions:
       Connection:
       - keep-alive
       User-Agent:
-      - python-requests/2.32.3
+      - python-requests/2.32.4
     method: GET
     uri: https://geodesy.unr.edu/NGLStationPages/stations/NONEXISTENT.sta
   response:
@@ -41,7 +41,7 @@ interactions:
       Content-Type:
       - text/html; charset=iso-8859-1
       Date:
-      - Wed, 04 Jun 2025 17:30:00 GMT
+      - Wed, 18 Jun 2025 15:17:51 GMT
       Keep-Alive:
       - timeout=5, max=100
       Server:

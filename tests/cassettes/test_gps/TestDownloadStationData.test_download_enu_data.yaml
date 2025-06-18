@@ -9,7 +9,7 @@ interactions:
       Connection:
       - keep-alive
       User-Agent:
-      - python-requests/2.32.3
+      - python-requests/2.32.4
     method: GET
     uri: https://geodesy.unr.edu/NGLStationPages/stations/P123.sta
   response:
@@ -183,13 +183,13 @@ interactions:
       Content-Length:
       - '13352'
       Date:
-      - Wed, 04 Jun 2025 17:30:02 GMT
+      - Wed, 18 Jun 2025 15:17:53 GMT
       ETag:
-      - '"3428-636bc729aa758"'
+      - '"3428-637362f135d83"'
       Keep-Alive:
       - timeout=5, max=100
       Last-Modified:
-      - Wed, 04 Jun 2025 10:27:44 GMT
+      - Tue, 10 Jun 2025 11:41:57 GMT
       Server:
       - Apache/2.4.58 (Ubuntu)
     status:
@@ -205,7 +205,7 @@ interactions:
       Connection:
       - keep-alive
       User-Agent:
-      - python-requests/2.32.3
+      - python-requests/2.32.4
     method: GET
     uri: https://geodesy.unr.edu/gps_timeseries/tenv3/IGS14/P123.tenv3
   response:
@@ -20200,7 +20200,7 @@ interactions:
       Content-Length:
       - '1358640'
       Date:
-      - Wed, 04 Jun 2025 17:30:03 GMT
+      - Wed, 18 Jun 2025 15:17:53 GMT
       ETag:
       - '"14bb30-623f6ee1bf300"'
       Keep-Alive:

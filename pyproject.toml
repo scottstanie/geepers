@@ -49,6 +49,7 @@ platforms = ["osx-arm64", "linux-64"]
 
 [tool.pixi.pypi-dependencies]
 geepers = { path = ".", editable = true }
+opera-utils = "*"
 
 [tool.pixi.dependencies]
 python = ">=3.11"
@@ -57,11 +58,14 @@ git = "*"
 pandas = "*"
 geopandas-base = "*"
 xarray = "*"
+dask = ">=2025.5.1"
 pyproj = "*"
 rasterio = "*"
+rioxarray = ">=0.19.0"
 shapely = "*"
-requests = ">=2.32.4,<3"
-tqdm = ">=4.67.1,<5"
+requests = ">=2.32.4"
+tqdm = ">=4.67.1"
+zarr = ">=3.0.8,<4"
 
 [tool.pixi.tasks]
 check = "pre-commit run -a"
@@ -72,10 +76,11 @@ pre-commit = "*"
 pytest = "*"
 pytest-cov = "*"
 pytest-randomly = "*"
-pytest-recording = ">=0.13.2,<0.14"
+pytest-recording = ">=0.13.2"
 pytest-xdist = "*"
 ruff = "*"
-matplotlib = ">=3.10.3,<4"
+matplotlib = ">=3.10.3"
+ipython = ">=9.3.0"
 
 [tool.pixi.environments]
 test = ["test"]
@@ -159,6 +164,3 @@ filterwarnings = [
   "ignore:datetime.datetime.utcfromtimestamp.*:DeprecationWarning",
   "ignore:.*shapely.geos.*:DeprecationWarning",
 ]
-
-[dependency-groups]
-test = ["opera-utils>=0.23.0,<0.24"]
