@@ -1,15 +1,9 @@
 from dataclasses import asdict
-from typing import Literal
 
 import numpy as np
 import pandas as pd
 
 from .midas import MidasResult, midas
-
-try:
-    from ._robust_fit import robust_linear_fit
-except ImportError:
-    print("Failed to import `robust_linear_fit`: e")
 
 EMPTY_MIDAS = MidasResult(np.nan, np.nan, np.nan, np.nan, np.nan, np.array([]))
 
@@ -70,7 +64,9 @@ def calculate_rates(
                 gps_velocity_l2 = (
                     np.polyfit(years[mask], group["los_gps"][mask], 1)[0] * const
                 )
-                gps_midas = const * _get_group_midas(group, "los_gps")
+
+                group_df = group[["date", "los_gps"]].dropna().set_index("date")
+                gps_midas = const * _get_midas_rate(group_df)
                 num_gps = len(group["los_gps"][mask])
 
         # InSAR rate
@@ -80,8 +76,9 @@ def calculate_rates(
             if sum(mask) > 2:  # Need at least 3 points for meaningful rate
                 x, y = np.array(years[mask]), np.array(group["los_insar"][mask])
                 insar_velocity_l2 = np.polyfit(x, y, 1)[0] * const
-                insar_velocity = const * robust_linear_fit(x, y)[0]
-                # insar_midas = const * _get_group_midas(group, "los_insar")
+                group_df_insar = group[["date", "los_insar"]].dropna().set_index("date")
+                insar_midas = const * _get_midas_rate(group_df_insar)
+                insar_velocity = insar_midas.velocity
 
         if not np.isnan(insar_velocity):
             tcoh = (
@@ -117,30 +114,11 @@ def calculate_rates(
     return rates
 
 
-def get_midas_rate(
-    df: pd.DataFrame, station: str, col: Literal["los_gps", "los_insar"]
-) -> MidasResult:
-    """Calculate the MIDAS rate for one gps station.
-
-    `df` is the result from the result `combined_df` from `create_tidy_df`.
-    """
-    ddf = df[df.station == station]
-    cur_df_measurement = ddf[ddf.measurement == col]
-    return _get_midas_rate(cur_df_measurement)
-
-
-def _get_group_midas(grouped_df, col: Literal["los_gps", "los_insar"]):
-    df = grouped_df[["station", "date", col]].dropna()
-    time_deltas = df.date - df.date.iloc[0]
-    years = time_deltas.dt.total_seconds() / (365.25 * 24 * 60 * 60)
-    values = df[col].to_numpy()
-    return midas(times=years.to_numpy(), values=values)
-
-
-def _get_midas_rate(cur_df_measurement):
-    time_deltas = cur_df_measurement.date - cur_df_measurement.date.iloc[0]
-    years = time_deltas.dt.total_seconds() / (365.25 * 24 * 60 * 60)
-    values = cur_df_measurement.value.to_numpy()
+# TODO: is this where a Pandera schema would be useful?
+def _get_midas_rate(cur_df_measurement: pd.DataFrame) -> MidasResult:
+    time_deltas = cur_df_measurement.index - cur_df_measurement.index[0]
+    years = time_deltas.total_seconds() / (365.25 * 24 * 60 * 60)
+    values = cur_df_measurement.values.squeeze()
     return midas(times=years.to_numpy(), values=values)
 
 
