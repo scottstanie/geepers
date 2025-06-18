@@ -97,21 +97,23 @@ class XarrayReader:
             A 2D XarrayReader with the data from the file.
 
         """
-        ds = xr.open_dataset(filename, engine=engine)
+        ds = xr.open_dataset(filename, engine=engine, consolidated=False)
         if data_var is not None:
             da = ds[data_var]
         else:
-            if len(ds.data_vars) != 1:
+            if len([var for var in ds.data_vars if ds[var].ndim >= 2]) != 1:
                 msg = (
                     "Multiple data variables found in file. Please specify which one to"
                     " use."
                 )
                 raise ValueError(msg)
-            da = ds[next(iter(ds.data_vars.keys()))]
+            da = ds[next(var for var in ds.data_vars if ds[var].ndim >= 2)]
 
         # Apply overrides, if given
         if crs is not None:
             da.rio.write_crs(crs, inplace=True)
+        elif da.rio.crs is None and "spatial_ref" in ds:
+            da.rio.write_crs(ds["spatial_ref"].crs_wkt, inplace=True)
         if nodata is not None:
             da.rio.write_nodata(nodata, inplace=True)
         if units is not None:

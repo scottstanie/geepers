@@ -81,46 +81,49 @@ def station_gdf(station_df: pd.DataFrame) -> gpd.GeoDataFrame:
 
 class TestGetStationsWithinImage:
     @pytest.fixture
-    def mock_src(
+    def mock_reader(
         self,
         bounds=(-156.5, 18.0, -154.0, 20.0),
         crs="EPSG:4326",
-        index_side_effect=None,
-        read_side_effect=None,
     ):
-        m = Mock()
-        m.bounds = bounds
-        m.crs = crs
-        if index_side_effect is not None:
-            m.index.side_effect = index_side_effect
-        if read_side_effect is not None:
-            m.read.side_effect = read_side_effect
-        return m
+        """Create a mock XarrayReader for testing."""
+        reader = Mock()
+        reader.crs = crs
+        reader.da.rio.bounds = bounds
+        return reader
 
-    def test_stations_within_bounds(self, station_gdf, mock_src):
+    def test_stations_within_bounds(self, station_gdf, mock_reader):
         """Both stations fall inside the mocked raster bounds."""
-        with (
-            patch("geepers.gps.read_station_llas", return_value=station_gdf),
-            patch("rasterio.open") as mock_rio,
-        ):
-            mock_rio.return_value.__enter__.return_value = mock_src
-
-            result = gps.get_stations_within_image("dummy.tif", mask_invalid=False)
+        with patch("geepers.gps.read_station_llas", return_value=station_gdf):
+            result = gps.get_stations_within_image(mock_reader, mask_invalid=False)
 
             assert len(result) == 2
             assert set(result.name) == {"CRIM", "OUTL"}
 
-    def test_exclude_stations(self, station_gdf, mock_src):
+    def test_exclude_stations(self, station_gdf, mock_reader):
         """Explicitly exclude OUTL from the returned GeoDataFrame."""
-        with (
-            patch("geepers.gps.read_station_llas", return_value=station_gdf),
-            patch("rasterio.open") as mock_rio,
-        ):
-            mock_rio.return_value.__enter__.return_value = mock_src
-
+        with patch("geepers.gps.read_station_llas", return_value=station_gdf):
             result = gps.get_stations_within_image(
-                "dummy.tif", mask_invalid=False, exclude_stations=["OUTL"]
+                mock_reader, mask_invalid=False, exclude_stations=["OUTL"]
             )
 
             assert len(result) == 1
             assert result.name.iloc[0] == "CRIM"
+
+    def test_reader_utm(self, station_gdf):
+        """Test that UTM CRS is handled correctly."""
+        reader = Mock()
+        reader.crs = "EPSG:32611"
+        bounds_lonlat = (-156.5, 18.0, -154.0, 20.0)
+
+        # Convert the bounds to UTM
+        from rasterio.warp import transform_bounds
+
+        bounds_utm = transform_bounds("EPSG:4326", reader.crs, *bounds_lonlat)
+        reader.da.rio.bounds = bounds_utm
+
+        with patch("geepers.gps.read_station_llas", return_value=station_gdf):
+            result = gps.get_stations_within_image(reader, mask_invalid=False)
+
+            assert len(result) == 2
+            assert set(result.name) == {"CRIM", "OUTL"}
