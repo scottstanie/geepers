@@ -1,11 +1,10 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from concurrent.futures import ThreadPoolExecutor
 from contextlib import ExitStack
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Protocol, Self, runtime_checkable
+from typing import TYPE_CHECKING, Self
 
 import numpy as np
 import pandas as pd
@@ -13,103 +12,21 @@ import rasterio as rio
 import rasterio.windows
 import xarray as xr
 from affine import cached_property
-from numpy.typing import ArrayLike
 from opera_utils import get_dates
 from pyproj import Transformer
 from rasterio.vrt import WarpedVRT
-from tqdm.contrib.concurrent import thread_map
 
 from ._types import PathOrStr
 
-__all__ = ["DatasetReader", "RasterReader", "RasterStackReader", "StackReader"]
+__all__ = ["RasterReader", "XarrayReader"]
 
 
 if TYPE_CHECKING:
     from dolphin._types import Index
 
 
-@runtime_checkable
-class DatasetReader(Protocol):
-    """An array-like interface for reading input datasets.
-
-    `DatasetReader` defines the abstract interface that types must conform to in order
-    to be read by functions which iterate in blocks over the input data.
-    Such objects must export NumPy-like `dtype`, `shape`, and `ndim` attributes,
-    and must support NumPy-style slice-based indexing.
-
-    Note that this protocol allows objects to be passed to `dask.array.from_array`
-    which needs `.shape`, `.ndim`, `.dtype` and support numpy-style slicing.
-    """
-
-    dtype: np.dtype
-    """numpy.dtype : Data-type of the array's elements."""
-
-    shape: tuple[int, ...]
-    """tuple of int : Tuple of array dimensions."""
-
-    ndim: int
-    """int : Number of array dimensions."""
-
-    def __getitem__(self, key: tuple[Index, ...], /) -> ArrayLike:
-        """Read a block of data."""
-        ...
-
-    def read_window(
-        self,
-        lon: float,
-        lat: float,
-        buffer_pixels: int = 0,
-        op=round,
-    ) -> np.ndarray:
-        """Read in pixel values in a spatial window centered at `lon`, `lat`."""
-        ...
-
-    def read_lon_lat(self, lons, lats) -> np.ndarray:
-        """Read in raster values located at `lons`, `lats`."""
-        ...
-
-
-@runtime_checkable
-class StackReader(DatasetReader, Protocol):
-    """An array-like interface for reading a 3D stack of input datasets.
-
-    `StackReader` defines the abstract interface that types must conform to in order
-    to be valid inputs to be read in functions like [dolphin.ps.create_ps][].
-    It is a specialization of [DatasetReader][] that requires a 3D shape.
-    """
-
-    ndim: int = 3
-    """int : Number of array dimensions."""
-
-    shape: tuple[int, int, int]
-    """tuple of int : Tuple of array dimensions."""
-
-    def __len__(self) -> int:
-        """Int : Number of images in the stack."""
-        return self.shape[0]
-
-    def read_lon_lat(self, lons, lats) -> np.ndarray:
-        """Read in raster values located at `lons`, `lats`."""
-        ...
-
-    def read_window(
-        self,
-        lon: float,
-        lat: float,
-        buffer_pixels: int = 0,
-        op=round,
-    ) -> np.ndarray:
-        """Read in pixel values in a spatial window centered at `lon`, `lat`."""
-        ...
-
-    @property
-    def units(self) -> str:
-        """Units of the dataset."""
-        ...
-
-
 @dataclass
-class RasterReader(DatasetReader):
+class RasterReader:
     """A single raster band of a GDAL-compatible dataset.
 
     See Also
@@ -184,6 +101,11 @@ class RasterReader(DatasetReader):
     def ndim(self) -> int:  # type: ignore[override]
         """Int : Number of array dimensions."""
         return 2
+
+    @cached_property
+    def units(self) -> str:
+        with rio.open(self.filename) as src:
+            return src.units[self.band - 1]
 
     def __array__(self) -> np.ndarray:
         return self[:, :]
@@ -298,38 +220,51 @@ class RasterReader(DatasetReader):
             return src.read(self.band, window=window, masked=self.masked)
 
 
-def _read_3d(
-    key: tuple[Index, ...], readers: Sequence[DatasetReader], num_threads: int = 1
-):
-    bands, r_slice, c_slice = _unpack_3d_slices(key)
-
-    if isinstance(bands, slice):
-        # convert the bands to -1-indexed list
-        total_num_bands = len(readers)
-        band_idxs = list(range(*bands.indices(total_num_bands)))
-    elif isinstance(bands, int):
-        band_idxs = [bands]
-    else:
-        msg = "Band index must be an integer or slice."
-        raise TypeError(msg)
-
-    # Get only the bands we need
-    if num_threads == 1:
-        out = np.stack([readers[i][r_slice, c_slice] for i in band_idxs], axis=0)
-    else:
-        with ThreadPoolExecutor(max_workers=num_threads) as executor:
-            results = executor.map(lambda i: readers[i][r_slice, c_slice], band_idxs)
-        out = np.stack(list(results), axis=0)
-
-    # TODO: Do i want a "keep_dims" option to not collapse singleton dimensions?
-    return np.squeeze(out)
-
-
 @dataclass
-class XarrayStackReader(StackReader):
-    """A stack of datasets for any GDAL-readable rasters."""
+class XarrayReader:
+    """A wrapper for an `xarray.DataArray` with georeferencing/windowed reading."""
 
     da: xr.DataArray
+
+    def __post_init__(self):
+        # Check that the DataArray has the required coordinates
+        if self.ndim == 3 and "time" not in self.da.coords:
+            msg = "DataArray must have 'time' coordinate."
+            raise ValueError(msg)
+
+        # Normalize so we have 'x' and 'y' coordinates
+        if "lon" in self.da.coords:
+            self.da = self.da.rename({"lon": "x"})
+            if self.crs is not None and self.crs != "EPSG:4326":
+                msg = "CRS is not EPSG:4326, but 'lon' coordinate is present."
+                raise ValueError(msg)
+            self.da.rio.write_crs("EPSG:4326", inplace=True)
+        if "lat" in self.da.coords:
+            self.da = self.da.rename({"lat": "y"})
+
+        if "x" not in self.da.coords or "y" not in self.da.coords:
+            msg = "DataArray must have 'x' and 'y' coordinates."
+            raise ValueError(msg)
+
+    @classmethod
+    def from_stack_file(
+        cls,
+        filename: Path | str,
+        data_var: str,
+        engine: str | None = None,
+        nodata: float | None = None,
+        crs: rio.crs.CRS | None = None,
+        units: str | None = None,
+    ) -> Self:
+        da = xr.open_dataset(filename, engine=engine)[data_var]
+        # Apply overrides, if given
+        if crs is not None:
+            da.rio.write_crs(crs, inplace=True)
+        if nodata is not None:
+            da.rio.write_nodata(nodata, inplace=True)
+        if units is not None:
+            da.attrs["units"] = units
+        return cls(da)
 
     @classmethod
     def from_geotiff_files(
@@ -346,7 +281,9 @@ class XarrayStackReader(StackReader):
                 ds = ds.sel(band=ds.band[0]).drop_vars("band")
             return ds.expand_dims(time=[pd.to_datetime(date)])
 
-        ds = xr.open_mfdataset(sorted(file_list), preprocess=preprocess)
+        ds = xr.open_mfdataset(
+            sorted(file_list), engine="rasterio", preprocess=preprocess
+        )
         return cls(ds.band_data)
 
     @property
@@ -368,129 +305,30 @@ class XarrayStackReader(StackReader):
     def crs(self):
         return self.da.rio.crs()
 
-    def read_lon_lat(self, lons, lats):
+    def read_lon_lat(self, lons: Sequence[float], lats: Sequence[float]) -> np.ndarray:
         if self.crs != "EPSG:4326":
-            with WarpedVRT(self.da, crs="EPSG:4326") as vrt:
-                return vrt.sel(x=lons, y=lats, method="nearest").values
-        return self.da.sel(x=lons, y=lats, method="nearest").values
+            x, y = self._transformer_from_lonlat.transform(lons, lats)
+        else:
+            x, y = np.asarray(lons), np.asarray(lats)
+        return self.da.sel(x=x, y=y, method="nearest").values
+
+    def read_window(self, lon: float, lat: float, buffer_pixels: int = 0, op=round):
+        if self.crs != "EPSG:4326":
+            x, y = self._transformer_from_lonlat.transform(lon, lat)
+        else:
+            x, y = lon, lat
+        x_int, y_int = op(x), op(y)
+        x_slice = slice(x_int - buffer_pixels, x_int + buffer_pixels + 1)
+        y_slice = slice(y_int - buffer_pixels, y_int + buffer_pixels + 1)
+        return self.da.sel(x=x_slice, y=y_slice, method="nearest").values
 
     @cached_property
     def _transformer_from_lonlat(self):
         return Transformer.from_crs("EPSG:4326", self.crs, always_xy=True)
 
-    def _get_point_values(self, lon: float, lat: float) -> np.ndarray:
-        """Get point values for a dataset at lon/lat."""
-        x, y = self._transformer_from_lonlat.transform(lon, lat)
-        point_data = self.da.sel(x=x, y=y, method="nearest")
-        return np.atleast_1d(point_data.values)
-
     @property
     def units(self) -> str:
-        return self.da.rio.units
-
-
-@dataclass
-class RasterStackReader(StackReader):
-    """A stack of datasets for any GDAL-readable rasters."""
-
-    file_list: Sequence[PathOrStr]
-    readers: Sequence[DatasetReader]
-    num_threads: int = 1
-    nodata: float | None = None
-    masked: bool = True
-
-    def __getitem__(self, key: tuple[Index, ...], /) -> np.ndarray:
-        return _read_3d(key, self.readers, num_threads=self.num_threads)
-
-    @property
-    def shape_2d(self):
-        return self.readers[0].shape
-
-    @property
-    def shape(self):
-        return (len(self.file_list), *self.shape_2d)
-
-    @property
-    def dtype(self):
-        return self.readers[0].dtype
-
-    @classmethod
-    def from_file_list(
-        cls,
-        file_list: Sequence[PathOrStr],
-        bands: int | Sequence[int] = 1,
-        keep_open: bool = False,
-        num_threads: int = 1,
-        nodata: float | None = None,
-        masked: bool = True,
-    ) -> RasterStackReader:
-        """Create a RasterStackReader from a list of files.
-
-        Parameters
-        ----------
-        file_list : Sequence[PathOrStr]
-            List of paths to the files to read.
-        bands : int | Sequence[int]
-            Band to read from each file.
-            If a single int, will be used for all files.
-            Default = 1.
-        keep_open : bool, optional (default False)
-            If True, keep the rasterio file handles open for faster reading.
-        num_threads : int, optional (default 1)
-            Number of threads to use for reading.
-        nodata : float, optional
-            Manually set value to use for nodata pixels, by default None
-        masked : bool, optional
-            If True, reads in data as a MaskedArray, masking nodata values.
-            Default is True.
-
-        Returns
-        -------
-        RasterStackReader
-            The RasterStackReader object.
-
-        """
-        if isinstance(bands, int):
-            bands = [bands] * len(file_list)
-
-        readers = [
-            RasterReader.from_file(f, band=b, keep_open=keep_open, masked=masked)
-            for (f, b) in zip(file_list, bands, strict=False)
-        ]
-        # Check if nodata values were found in the files
-        nds = {r.nodata for r in readers}
-        if len(nds) == 1:
-            nodata = nds.pop()
-        return cls(file_list, readers, num_threads=num_threads, nodata=nodata)
-
-    def read_lon_lat(self, lons, lats) -> np.ndarray:
-        """Read in raster values located at `lons`, `lats`."""
-
-        def _read_single(reader):
-            return reader.read_lon_lat(lons, lats, masked=reader.masked)
-
-        results = thread_map(
-            _read_single,
-            self.readers,
-            max_workers=self.num_threads,
-            desc="Reading points from time series",
-        )
-        return np.array(list(results))
-
-    def read_window(
-        self,
-        lon: float,
-        lat: float,
-        buffer_pixels: int = 0,
-        op=round,
-    ):
-        """Get a window of pixel values for a given longitude and latitude."""
-        return np.array(
-            [
-                reader.read_window(lon, lat, buffer_pixels=buffer_pixels, op=op)
-                for reader in self.readers
-            ]
-        )
+        return self.da.units
 
 
 def _ensure_slices(rows: Index, cols: Index) -> tuple[slice, slice]:
@@ -503,26 +341,3 @@ def _ensure_slices(rows: Index, cols: Index) -> tuple[slice, slice]:
             return key
 
     return _parse(rows), _parse(cols)
-
-
-def _unpack_3d_slices(key: tuple[Index, ...]) -> tuple[Index, slice, slice]:
-    # Check that it's a tuple of slices
-    if not isinstance(key, tuple):
-        msg = "Index must be a tuple of slices."
-        raise TypeError(msg)
-    if len(key) not in (1, 3):
-        msg = "Index must be a tuple of 1 or 3 slices."
-        raise TypeError(msg)
-    # If only the band is passed (e.g. stack[0]), convert to (0, :, :)
-    if len(key) == 1:
-        key = (key[0], slice(None), slice(None))
-    # unpack the slices
-    bands, rows, cols = key
-    # convert the rows/cols to slices
-    r_slice, c_slice = _ensure_slices(rows, cols)
-    return bands, r_slice, c_slice
-
-
-def get_raster_units(filename: PathOrStr, band: int = 1) -> str | None:
-    with rio.open(filename) as src:
-        return src.units[band - 1]
