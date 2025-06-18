@@ -133,10 +133,10 @@ class TestXarrayReader:
         with pytest.raises(ValueError, match="Units are not set"):
             XarrayReader(dataarray_2d)
 
-    def test_from_file_list(self, dataarray_3d):
+    def test_from_file_list(self, tmp_path, dataarray_3d):
         """Test basic from_file_list functionality."""
 
-        files = ["20200101_20200102.tif", "20200102_20200103.tif"]
+        files = [tmp_path / "20200101_20200102.tif", tmp_path / "20200102_20200103.tif"]
         dataarray_3d[0].rio.to_raster(files[0])
         dataarray_3d[1].rio.to_raster(files[1])
         reader = XarrayReader.from_file_list(files)
@@ -162,7 +162,7 @@ class TestXarrayReader:
 
 class TestXarrayRealData:
     def test_read_lon_lat(self):
-        test_los_enu_file = Path(__file__).parent / "data/hawaii_los_enu.tif"
+        test_los_enu_file = Path(__file__).parent / "data/hawaii/hawaii_los_enu.tif"
         expected_los_enu = [-0.6738281, -0.12548828, 0.72753906]
         reader = XarrayReader.from_file(test_los_enu_file, units="unitless")
         sample_point = [-155, 20]

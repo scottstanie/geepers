@@ -1,18 +1,20 @@
+import zipfile
 from pathlib import Path
 
 import pandas as pd
-import pytest
 
+import geepers.gps as gps
 from geepers.core import main
 
 
-@pytest.mark.vcr
-def test_main(tmp_path):
+def test_main(tmp_path, monkeypatch):
     data_dir = Path(__file__).parent / "data/hawaii"
-    import geepers.gps
+    unr_data_zipped = Path(__file__).parent / "data/unr.zip"
+    # unzip, and set to GPS dir:
+    with zipfile.ZipFile(unr_data_zipped, "r") as zip_ref:
+        zip_ref.extractall(tmp_path)
 
-    geepers.gps.GPS_DIR = tmp_path / "unr-data"
-    geepers.gps.GPS_DIR.mkdir(exist_ok=True, parents=True)
+    monkeypatch.setattr(gps, "GPS_DIR", tmp_path)
 
     main(
         los_enu_file=data_dir / "hawaii_los_enu.tif",
