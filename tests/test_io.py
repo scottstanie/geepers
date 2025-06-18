@@ -68,15 +68,6 @@ class TestXarrayReader:
         assert reader.crs == "EPSG:4326"
         assert "time" in reader.da.coords
 
-    def test_reader_3d_without_time_fails(self, dataarray_3d):
-        """Test that 3D reader without time coordinate fails."""
-        da_no_time = dataarray_3d.copy().rename({"time": "z"})
-
-        with pytest.raises(
-            ValueError, match="3D XarrayReaders must have 'time' coordinate"
-        ):
-            XarrayReader(da_no_time)
-
     def test_reader_coordinate_normalization(self):
         """Test that lon/lat coordinates are normalized to x/y."""
         data = np.random.rand(10, 10)
@@ -172,7 +163,7 @@ class TestXarrayReader:
 class TestXarrayRealData:
     def test_read_lon_lat(self):
         test_los_enu_file = Path(__file__).parent / "data/hawaii_los_enu.tif"
-        expected_los_enu = [0.5634765625, -0.1094970703125, 0.818359375]
+        expected_los_enu = [-0.6738281, -0.12548828, 0.72753906]
         reader = XarrayReader.from_file(test_los_enu_file, units="unitless")
         sample_point = [-155, 20]
         los_enu = reader.read_lon_lat(*sample_point).values

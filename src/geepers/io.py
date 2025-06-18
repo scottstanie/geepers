@@ -93,7 +93,11 @@ class XarrayReader:
             A 2D XarrayReader with the data from the file.
 
         """
-        ds = xr.open_dataset(filename, engine=engine)
+        if Path(filename).suffix == ".zarr":
+            ds = xr.open_zarr(filename, consolidated=False)
+        else:
+            ds = xr.open_dataset(filename, engine=engine)
+
         if data_var is not None:
             da = ds[data_var]
         else:
