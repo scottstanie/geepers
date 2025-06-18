@@ -270,8 +270,8 @@ def main(
     df_gps_stations = geepers.gps.get_stations_within_image(insar_reader)
     df_gps_stations.set_index("name", inplace=True)
 
-    start_date = insar_reader.da.time[0]
-    end_date = insar_reader.da.time[-1]
+    start_date = insar_reader.da.time[0].to_pandas()
+    end_date = insar_reader.da.time[-1].to_pandas()
 
     def _load_or_none(name: str) -> pd.DataFrame | None:
         try:
@@ -284,11 +284,11 @@ def main(
     df_gps_list = thread_map(
         _load_or_none,
         df_gps_stations.index,
-        max_workers=5,
+        max_workers=10,
         desc="Downloading GPS station data",
     )
 
-    los_reader = XarrayReader.from_file(los_enu_file)
+    los_reader = XarrayReader.from_file(los_enu_file, units="unitless")
     station_to_los_gps: dict[str, pd.DataFrame] = {}
 
     for station_row, df in tqdm(
@@ -302,11 +302,10 @@ def main(
             )
             continue
 
-        enu_vec = (
-            np.stack(los_reader.read_lon_lat(station_row.lon, station_row.lat))
-            .values.squeeze()
-            .ravel()
+        enu_vec = np.nan_to_num(
+            los_reader.read_lon_lat(station_row.lon, station_row.lat)
         )
+        assert enu_vec.shape == (3,)
         if np.allclose(enu_vec, 0):
             warnings.warn(
                 f"{station_row.Index} lies outside LOS raster; skipping.", stacklevel=2

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import numpy as np
 import pytest
 import rioxarray  # noqa: F401 - needed for rio accessor
@@ -165,3 +167,13 @@ class TestXarrayReader:
 
         # Test that time coordinates are preserved
         assert all(reader.da.coords["time"] == dataarray_3d.coords["time"])
+
+
+class TestXarrayRealData:
+    def test_read_lon_lat(self):
+        test_los_enu_file = Path(__file__).parent / "data/hawaii_los_enu.tif"
+        expected_los_enu = [0.5634765625, -0.1094970703125, 0.818359375]
+        reader = XarrayReader.from_file(test_los_enu_file, units="unitless")
+        sample_point = [-155, 20]
+        los_enu = reader.read_lon_lat(*sample_point).values
+        assert np.allclose(los_enu, expected_los_enu)

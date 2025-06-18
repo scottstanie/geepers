@@ -31,13 +31,9 @@ class XarrayReader:
 
     def __post_init__(self):
         # Check that the DataArray has the required coordinates
-        if self.ndim == 3 and "time" not in self.da.coords:
-            da = self.da
-            if "band" in da.coords and da.coords["band"].size == 1:
-                self.da = da.sel(band=da.coords["band"][0]).drop_vars("band")
-            else:
-                msg = "3D XarrayReaders must have 'time' coordinate."
-                raise ValueError(msg)
+        da = self.da
+        if "band" in da.coords and da.coords["band"].size == 1:
+            self.da = da.sel(band=da.coords["band"][0]).drop_vars("band")
 
         # Normalize so we have 'x' and 'y' coordinates
         if "lon" in self.da.coords:
@@ -179,36 +175,43 @@ class XarrayReader:
         return self.da.rio.crs
 
     def read_lon_lat(
-        self, lons: Sequence[float], lats: Sequence[float]
+        self, lons: float | Sequence[float], lats: float | Sequence[float]
     ) -> list[xr.DataArray]:
         """Read values at given longitudes and latitudes.
 
         Parameters
         ----------
-        lons : Sequence[float]
+        lons : float | Sequence[float]
             Longitudes to read.
-        lats : Sequence[float]
+        lats : float | Sequence[float]
             Latitudes to read.
 
         Returns
         -------
-        np.ndarray
-            1D array of values at the given longitudes and latitudes.
+        xr.DataArray | list[xr.DataArray]
+            Values at the given longitudes and latitudes.
+            If a single longitude and latitude is provided, returns a single
+            `xr.DataArray`. Otherwise, returns a list of `xr.DataArray`
+            objects.
 
         """
         if self.crs != "EPSG:4326":
             x, y = self._transformer_from_lonlat.transform(lons, lats)
+        else:
+            x, y = np.asarray(lons), np.asarray(lats)
 
-        x, y = np.asarray(lons), np.asarray(lats)
-        if x.size != y.size:
+        xa, ya = np.asarray(x), np.asarray(y)
+        if xa.size != ya.size:
             msg = "x and y must have the same length"
             raise ValueError(msg)
-        if x.size > 1:
-            return [
-                self.da.sel(x=xx, y=yy, method="nearest")
-                for xx, yy in zip(x, y, strict=False)
-            ]
-        return self.da.sel(x=x, y=y, method="nearest")
+
+        if xa.size == 1:
+            return self.da.sel(x=xa, y=ya, method="nearest")
+
+        return [
+            self.da.sel(x=xx, y=yy, method="nearest")
+            for xx, yy in zip(xa, ya, strict=False)
+        ]
 
     def read_window(
         self, lon: float, lat: float, buffer_pixels: int = 0, op=round
