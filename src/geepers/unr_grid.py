@@ -8,6 +8,8 @@ import pandas as pd
 import requests
 from tqdm import tqdm
 
+from geepers.io import XarrayReader
+
 LOOKUP_FILE_URL = "https://geodesy.unr.edu/grid_timeseries/grid_latlon_lookup.txt"
 GRID_DATA_BASE_URL = (
     "https://geodesy.unr.edu/grid_timeseries/time_variable_gridded/IGS14/"
@@ -31,6 +33,7 @@ def _read_grid_file() -> pd.DataFrame:
     return df.set_index("grid_point")
 
 
+@cache
 def list_remote_data_files() -> list[str]:
     """Retrieve available .tenv8 filenames from the UNR grid data directory.
 
@@ -48,6 +51,45 @@ def list_remote_data_files() -> list[str]:
     pattern = re.compile(r"(\d{6}_IGS14\.tenv8)")
     files = set(pattern.findall(response.text))
     return sorted(files)
+
+
+def get_grid_within_image(reader: XarrayReader) -> gpd.GeoDataFrame:
+    """Find grid points within a given geocoded image.
+
+    Parameters
+    ----------
+    reader : XarrayReader
+        Reader object containing the geocoded DataArray.
+
+    Returns
+    -------
+    geopandas.GeoDataFrame
+        A GeoDataFrame containing information about the GPS stations within the image.
+
+    Notes
+    -----
+    This function assumes the image is in a geographic coordinate system (lat/lon).
+
+    """
+    import rasterio.warp
+    from shapely import box
+
+    if reader.crs != "EPSG:4326":
+        bounds = rasterio.warp.transform_bounds(
+            reader.crs, "EPSG:4326", *reader.da.rio.bounds()
+        )
+    else:
+        bounds = reader.da.rio.bounds()
+    bounds_poly = box(*bounds)
+
+    # Get all GPS stations
+    gdf_all = _read_grid_file()
+
+    gdf_within = gdf_all.clip(bounds_poly)
+
+    # Reset index for cleaner output
+    gdf_within.reset_index(drop=True, inplace=True)
+    return gdf_within
 
 
 def download_data_files(

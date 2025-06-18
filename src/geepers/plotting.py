@@ -1,3 +1,4 @@
+from collections.abc import Sequence
 from pathlib import Path
 
 import matplotlib.pyplot as plt
@@ -9,13 +10,15 @@ from geepers import gps
 from geepers.io import XarrayReader
 
 
-def create_comparison_plot(df: pd.DataFrame) -> tuple[plt.Figure, plt.Axes]:
+def create_comparison_plot(
+    relative_comparison_csv: Path | str,
+) -> tuple[plt.Figure, plt.Axes]:
     """Create scatter plot comparing GPS and InSAR measurements.
 
     Parameters
     ----------
-    df : pd.DataFrame
-        DataFrame containing 'station', 'date', 'measurement', and 'value' columns
+    relative_comparison_csv : Path | str
+        CSV file containing 'station', 'date', 'measurement', and 'value' columns
 
     Returns
     -------
@@ -25,6 +28,7 @@ def create_comparison_plot(df: pd.DataFrame) -> tuple[plt.Figure, plt.Axes]:
         The axes object
 
     """
+    df = pd.read_csv(relative_comparison_csv)
     df_wide = df.pivot_table(
         index=["station", "date"], columns="measurement", values="value"
     ).reset_index()
@@ -169,7 +173,9 @@ def create_rate_comparison_plot(
 
 
 def plot_stations_on_map(
-    filename: Path | str, units: str | None = None
+    filename: Path | str,
+    units: str | None = None,
+    stations: Sequence[str] | None = None,
 ) -> tuple[plt.Figure, plt.Axes]:
     """Plot locations of GPS stations contained in `filename`.
 
@@ -179,6 +185,8 @@ def plot_stations_on_map(
         Path to the InSAR stack file.
     units : str | None, optional
         Units of the InSAR stack. Default is None.
+    stations : Sequence[str] | None, optional
+        List of station names to plot. Default is None.
 
     Returns
     -------
@@ -190,6 +198,8 @@ def plot_stations_on_map(
     """
     reader = XarrayReader.from_file(filename, units=units)
     gdf = gps.get_stations_within_image(reader)
+    if stations is not None:
+        gdf = gdf[gdf.name.isin(stations)]
     fig, ax = plt.subplots(figsize=(6, 5))
     da_lonlat = reader.da.rio.reproject("EPSG:4326")
     da_lonlat.plot.imshow(ax=ax, cmap="gray")
