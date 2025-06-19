@@ -1,5 +1,7 @@
 """GPS data handling and downloading functionality.
 
+Currently this is only implemented for the Nevada Geodetic Laboratory (UNR).
+
 This module provides functions to download GPS station data, manage station
 information, and handle GPS time series data.
 """
@@ -7,6 +9,7 @@ information, and handle GPS time series data.
 from __future__ import annotations
 
 import datetime
+import difflib
 import logging
 import warnings
 from collections.abc import Sequence
@@ -19,8 +22,8 @@ import rasterio
 import requests
 from shapely.geometry import box
 
-from geepers import utils
 from geepers.io import XarrayReader
+from geepers.utils import get_cache_dir
 
 from ._types import PathOrStr
 
@@ -32,7 +35,7 @@ __all__ = [
 
 # Constants
 GPS_BASE_URL = "https://geodesy.unr.edu/gps_timeseries/tenv3/IGS14/{station}.tenv3"
-GPS_DIR = utils.get_cache_dir()
+GPS_DIR = get_cache_dir()
 GPS_DIR.mkdir(exist_ok=True, parents=True)
 STATION_LLH_URL = "https://geodesy.unr.edu/NGLStationPages/llh.out"
 STATION_LLH_FILE = str(GPS_DIR / "station_llh_all_{today}.csv")
@@ -407,37 +410,8 @@ def station_lonlat(station_name: str) -> tuple[float, float]:
     df = read_station_llas()
     station_name = station_name.upper()
     if station_name not in df["name"].values:
-        import difflib
-
         closest_names = difflib.get_close_matches(station_name, df["name"], n=5)
         msg = f"No station named {station_name} found. Closest: {closest_names}"
         raise ValueError(msg)
     _, lat, lon, _ = df[df["name"] == station_name].iloc[0]
     return lon, lat
-
-
-def station_distance(station_name1: str, station_name2: str) -> float:
-    """Find geodetic distance (in meters) between two gps stations.
-
-    Uses the WGS84 ellipsoid for calculation.
-
-    Parameters
-    ----------
-    station_name1 :str)
-        name of first GPS station
-    station_name2 :str)
-        name of second GPS station
-
-    Returns
-    -------
-        float: distance (in meters)
-
-    """
-    from pyproj import Geod
-
-    lon1, lat1 = station_lonlat(station_name1)
-    lon2, lat2 = station_lonlat(station_name2)
-
-    g = Geod(ellps="WGS84")
-
-    return g.line_length([lon1, lon2], [lat1, lat2], radians=False)

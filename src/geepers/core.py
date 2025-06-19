@@ -1,4 +1,4 @@
-"""Compare InSAR time-series displacements with collocated GPS observations."""
+"""Main workflow for comparing InSAR time-series displacements with collocated GPS observations."""
 
 from __future__ import annotations
 
