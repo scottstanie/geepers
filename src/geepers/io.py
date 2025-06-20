@@ -11,8 +11,9 @@ import pandas as pd
 import rasterio as rio
 import xarray as xr
 from affine import cached_property
-from opera_utils import get_dates
 from pyproj import Transformer
+
+from .utils import get_dates
 
 __all__ = ["XarrayReader"]
 
@@ -20,7 +21,7 @@ logger = logging.getLogger("geepers")
 
 
 if TYPE_CHECKING:
-    from dolphin._types import Index
+    from ._types import Index
 
 
 @dataclass
@@ -156,7 +157,6 @@ class XarrayReader:
             return ds.expand_dims(time=[pd.to_datetime(date)])
 
         ds = xr.open_mfdataset(files, engine="rasterio", preprocess=preprocess)
-        print(ds)
         return cls(ds.band_data)
 
     @property

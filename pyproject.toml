@@ -47,7 +47,6 @@ platforms = ["osx-arm64", "linux-64"]
 
 [tool.pixi.pypi-dependencies]
 geepers = { path = ".", editable = true }
-opera-utils = "*"
 
 [tool.pixi.dependencies]
 python = ">=3.11"

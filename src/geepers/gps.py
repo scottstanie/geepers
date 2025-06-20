@@ -414,30 +414,3 @@ def station_lonlat(station_name: str) -> tuple[float, float]:
         raise ValueError(msg)
     _, lat, lon, _ = df[df["name"] == station_name].iloc[0]
     return lon, lat
-
-
-def station_distance(station_name1: str, station_name2: str) -> float:
-    """Find geodetic distance (in meters) between two gps stations.
-
-    Uses the WGS84 ellipsoid for calculation.
-
-    Parameters
-    ----------
-    station_name1 :str)
-        name of first GPS station
-    station_name2 :str)
-        name of second GPS station
-
-    Returns
-    -------
-        float: distance (in meters)
-
-    """
-    from pyproj import Geod
-
-    lon1, lat1 = station_lonlat(station_name1)
-    lon2, lat2 = station_lonlat(station_name2)
-
-    g = Geod(ellps="WGS84")
-
-    return g.line_length([lon1, lon2], [lat1, lat2], radians=False)
