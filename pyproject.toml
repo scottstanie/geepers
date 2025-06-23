@@ -47,7 +47,6 @@ platforms = ["osx-arm64", "linux-64"]
 
 [tool.pixi.pypi-dependencies]
 geepers = { path = ".", editable = true }
-opera-utils = "*"
 
 [tool.pixi.dependencies]
 python = ">=3.11"
@@ -64,6 +63,7 @@ shapely = "*"
 requests = ">=2.32.4"
 tqdm = ">=4.67.1"
 zarr = "*"
+tyro = ">=0.9.24,<0.10"
 
 [tool.pixi.tasks]
 check = "pre-commit run -a"

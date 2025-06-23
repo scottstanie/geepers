@@ -10,9 +10,10 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 from affine import cached_property
-from opera_utils import get_dates
 from pyproj import Transformer
 from rasterio.crs import CRS
+
+from .utils import get_dates
 
 __all__ = ["XarrayReader"]
 
@@ -20,7 +21,7 @@ logger = logging.getLogger("geepers")
 
 
 if TYPE_CHECKING:
-    from dolphin._types import Index
+    from ._types import Index
 
 
 @dataclass
