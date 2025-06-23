@@ -96,6 +96,7 @@ class XarrayReader:
         if Path(filename).suffix == ".zarr":
             ds = xr.open_zarr(filename, consolidated=False)
         else:
+            engine = cls._guess_engine(filename)
             ds = xr.open_dataset(filename, engine=engine)
 
         if data_var is not None:
@@ -157,6 +158,20 @@ class XarrayReader:
 
         ds = xr.open_mfdataset(files, engine="rasterio", preprocess=preprocess)
         return cls(ds.band_data)
+
+    @staticmethod
+    def _guess_engine(filename: str | Path) -> str | None:
+        # TODO: Figure out why Xarray is bad at guessing, and uses `h5netcdf`
+        # when i pass zarr or geotiffs...
+        match Path(filename).suffix:
+            case "h5netcdf":
+                return "h5netcdf"
+            case ".zarr":
+                return "zarr"
+            case ".tif":
+                return "rasterio"
+            case _:
+                return None
 
     @property
     def ndim(self):

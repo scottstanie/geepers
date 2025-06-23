@@ -265,20 +265,7 @@ def main(
         if timeseries_stack is None:
             msg = "Must provide either timeseries_files or timeseries_stack"
             raise ValueError(msg)
-
-        match Path(timeseries_stack).suffix:
-            case "h5netcdf":
-                engine: str | None = "h5netcdf"
-            case ".zarr":
-                engine = "zarr"
-            case ".tif":
-                engine = "rasterio"
-            case _:
-                engine = None
-
-        insar_reader = XarrayReader.from_file(
-            timeseries_stack, data_var=stack_data_var, engine=engine
-        )
+        insar_reader = XarrayReader.from_file(timeseries_stack, data_var=stack_data_var)
     else:
         insar_reader = XarrayReader.from_file_list(timeseries_files, file_date_fmt)
 
