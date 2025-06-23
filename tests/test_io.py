@@ -159,6 +159,109 @@ class TestXarrayReader:
         # Test that time coordinates are preserved
         assert all(reader.da.coords["time"] == dataarray_3d.coords["time"])
 
+    def test_from_range_file_list_basic(self, tmp_path, dataarray_2d):
+        """Test basic from_range_file_list functionality."""
+        # Create quality raster files with range-based naming
+        quality_files = [
+            tmp_path / "similarity_20160705_20170302.tif",
+            tmp_path / "similarity_20170314_20171121.tif",
+            tmp_path / "similarity_20171203_20180613.tif",
+        ]
+
+        # Create test rasters with different values for each file
+        test_data = dataarray_2d.copy()
+        for i, qf in enumerate(quality_files):
+            test_data.values.fill(i + 1.0)  # Fill with 1.0, 2.0, 3.0 respectively
+            test_data.rio.to_raster(qf)
+
+        # Define target times that should map to these files
+        target_times = [
+            "2016-07-05",  # Should map to first file (20160705_20170302)
+            "2016-10-01",
+            "2017-03-14",  # Should map to second file (20170314_20171121)
+            "2017-11-01",
+            "2018-01-01",  # Should map to third file (20171203_20180613)
+            "2018-02-01",
+        ]
+
+        reader = XarrayReader.from_range_file_list(
+            quality_files, target_times, units="similarity"
+        )
+
+        assert reader.ndim == 3
+        assert reader.shape == (6, 10, 10)
+        assert "time" in reader.da.coords
+        assert len(reader.da.coords["time"]) == 6
+        assert reader.da.attrs["units"] == "similarity"
+
+        # Verify that each time slice has the expected value
+        assert np.all(reader.da[0].values == 1.0)  # First target time -> first file
+        assert np.all(reader.da[1].values == 1.0)  # Second target time -> first file
+        assert np.all(reader.da[2].values == 2.0)  # Third target time -> second file
+        assert np.all(reader.da[3].values == 2.0)  # Fourth target time -> second file
+        assert np.all(reader.da[4].values == 3.0)  # Fifth target time -> third file
+        assert np.all(reader.da[5].values == 3.0)  # Sixth target time -> third file
+
+    def test_from_range_file_list_no_matching_epochs(self, tmp_path, dataarray_2d):
+        """Test error when no files cover any requested epochs."""
+        quality_files = [
+            tmp_path / "similarity_20160101_20161231.tif",
+            tmp_path / "similarity_20170101_20171231.tif",
+        ]
+
+        # Create test rasters
+        test_data = dataarray_2d.copy()
+        for qf in quality_files:
+            test_data.rio.to_raster(qf)
+
+        # Target times that don't overlap with any file ranges
+        target_times = [
+            "2015-06-15",  # Before any file ranges
+            "2018-06-15",  # After any file ranges
+        ]
+
+        with pytest.raises(
+            ValueError, match="None of the files cover any requested epoch"
+        ):
+            XarrayReader.from_range_file_list(
+                quality_files, target_times, units="coherence"
+            )
+
+    def test_from_range_file_list_with_timeseries_reader(self, tmp_path, dataarray_3d):
+        """Test using target_times from an existing timeseries reader."""
+        # Create a timeseries reader first
+        timeseries_files = [
+            tmp_path / "20160927_20161009.tif",
+            tmp_path / "20161009_20161021.tif",
+            tmp_path / "20161021_20161102.tif",
+        ]
+
+        for i, tf in enumerate(timeseries_files):
+            dataarray_3d[i].rio.to_raster(tf)
+
+        timeseries_reader = XarrayReader.from_file_list(
+            timeseries_files, file_date_fmt="%Y%m%d", file_date_idx=1
+        )
+
+        # Create quality raster that covers the timeseries period
+        quality_files = [tmp_path / "similarity_20160901_20161130.tif"]
+        quality_data = dataarray_3d[0].copy()
+        quality_data.values.fill(0.8)
+        quality_data.rio.to_raster(quality_files[0])
+
+        # Use timeseries times as target times
+        quality_reader = XarrayReader.from_range_file_list(
+            quality_files, timeseries_reader.da.coords["time"], units="coherence"
+        )
+
+        assert quality_reader.shape == timeseries_reader.shape
+        assert np.all(quality_reader.da.values == 0.8)
+
+        # Time coordinates should match
+        assert all(
+            quality_reader.da.coords["time"] == timeseries_reader.da.coords["time"]
+        )
+
 
 class TestXarrayRealData:
     def test_read_lon_lat(self):
