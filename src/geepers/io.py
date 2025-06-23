@@ -8,11 +8,11 @@ from typing import TYPE_CHECKING, Self
 
 import numpy as np
 import pandas as pd
-import rasterio as rio
 import xarray as xr
 from affine import cached_property
 from opera_utils import get_dates
 from pyproj import Transformer
+from rasterio.crs import CRS
 
 __all__ = ["XarrayReader"]
 
@@ -64,7 +64,7 @@ class XarrayReader:
         data_var: str | None = None,
         engine: str | None = None,
         nodata: float | None = None,
-        crs: rio.crs.CRS | None = None,
+        crs: CRS | None = None,
         units: str | None = None,
     ) -> Self:
         """Create a XarrayReader from one file.
@@ -82,7 +82,7 @@ class XarrayReader:
             Xarray engine to use for opening the file.
         nodata : float | None
             Nodata value to use.
-        crs : rio.crs.CRS | None
+        crs : rasterio.crs.CRS | None
             CRS to use.
         units : str | None
             Units to use.
@@ -156,7 +156,6 @@ class XarrayReader:
             return ds.expand_dims(time=[pd.to_datetime(date)])
 
         ds = xr.open_mfdataset(files, engine="rasterio", preprocess=preprocess)
-        print(ds)
         return cls(ds.band_data)
 
     @property
