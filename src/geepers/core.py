@@ -129,8 +129,8 @@ def process_insar_data(
     *,
     reader: XarrayReader,
     df_gps_stations: pd.DataFrame,
-    # reader_temporal_coherence: DatasetReader | None = None,
-    # reader_similarity: DatasetReader | None = None,
+    reader_temporal_coherence: XarrayReader | None = None,
+    reader_similarity: XarrayReader | None = None,
 ) -> dict[str, pd.DataFrame]:
     """Sample InSAR rasters at all station locations in one pass.
 
@@ -142,7 +142,7 @@ def process_insar_data(
         DataFrame indexed by station name with at least ``lon`` and ``lat``
         columns (decimal degrees).
     reader_temporal_coherence, reader_similarity
-        Optional single-band rasters to sample alongside displacement to
+        Optional readers to sample alongside displacement to
         compute temporal coherence and phase similarity.
 
     Returns
@@ -163,18 +163,19 @@ def process_insar_data(
         r = compute(reader.read_lon_lat(lons, lats))
     los_insar = np.stack(r).squeeze()
 
-    # # TODO: make a list of variables to sample, doesn't have to be just one single
-    # # band reader like I made here:
-    # temp_coh = (
-    #     np.stack(reader_temporal_coherence.read_lon_lat(lons, lats))
-    #     if reader_temporal_coherence is not None
-    #     else None
-    # )
-    # similarity = (
-    #     np.stack(reader_similarity.read_lon_lat(lons, lats))
-    #     if reader_similarity is not None
-    #     else None
-    # )
+    if reader_temporal_coherence is not None:
+        with TqdmCallback(desc="Sampling temporal coherence data locations"):
+            r = compute(reader_temporal_coherence.read_lon_lat(lons, lats))
+        temp_coh = np.stack(r).squeeze()
+    else:
+        temp_coh = None
+
+    if reader_similarity is not None:
+        with TqdmCallback(desc="Sampling similarity data locations"):
+            r = compute(reader_similarity.read_lon_lat(lons, lats))
+        similarity = np.stack(r).squeeze()
+    else:
+        similarity = None
 
     if reader.units not in ("meters", "m"):
         logger.warning("Converting InSAR displacement to meters.")
@@ -187,10 +188,10 @@ def process_insar_data(
         data = {
             "los_insar": los_insar[i],
         }
-        # if similarity is not None:
-        #     data["similarity"] = similarity[i]
-        # if temp_coh is not None:
-        #     data["temporal_coherence"] = temp_coh[i]
+        if similarity is not None:
+            data["similarity"] = similarity[i]
+        if temp_coh is not None:
+            data["temporal_coherence"] = temp_coh[i]
 
         station_to_insar[station] = pd.DataFrame(index=reader.da.time, data=data)
 
@@ -206,8 +207,8 @@ def main(
     file_date_fmt: str = "%Y%m%d",
     stack_data_var: str | None = "displacement",
     reference_station: Annotated[str | None, tyro.conf.arg(aliases=["--ref"])] = None,
-    # temporal_coherence_file: Path | str | None = None,
-    # similarity_file: Path | None = None,
+    temporal_coherence_files: Sequence[str | Path] | None = None,
+    similarity_files: Sequence[str | Path] | None = None,
     compute_rates: Annotated[bool, tyro.conf.arg(aliases=["--rates"])] = False,
 ) -> None:
     """Process InSAR time-series and compare them to GPS displacements.
@@ -238,9 +239,9 @@ def main(
     reference_station
         Optional GPS station name - if provided, relative displacements are
         computed with respect to this station.
-    temporal_coherence_file, similarity_file
-        Optional rasters providing per-pixel temporal coherence and (Parizzi)
-        phase similarity which will be sampled at station locations.
+    temporal_coherence_files, similarity_files
+        Optional rasters providing per-pixel temporal coherence and phase
+        similarity which will be sampled at station locations.
     compute_rates : bool
         If `True`, computes a separate summary DataFrame of the average rate
         for each GPS station/InSAR location.
@@ -270,16 +271,20 @@ def main(
         insar_reader = XarrayReader.from_file_list(timeseries_files, file_date_fmt)
 
     logger.info("Created %s", insar_reader)
-    # # TODO: support temporal coherence and similarity dsets from xarray stack
-    # reader_temporal_coherence = (
-    #     RasterReader.from_file(temporal_coherence_file)
-    #     if temporal_coherence_file is not None
-    #     else None
-    # )
-    # reader_similarity = (
-    #     RasterReader.from_file(similarity_file)
-    #     if similarity_file is not None else None
-    # )
+    reader_temporal_coherence = (
+        XarrayReader.from_range_file_list(
+            temporal_coherence_files, insar_reader.da.time, units="unitless"
+        )
+        if temporal_coherence_files is not None
+        else None
+    )
+    reader_similarity = (
+        XarrayReader.from_range_file_list(
+            similarity_files, insar_reader.da.time, units="unitless"
+        )
+        if similarity_files is not None
+        else None
+    )
 
     df_gps_stations = geepers.gps.get_stations_within_image(
         insar_reader, mask_invalid=False
@@ -336,8 +341,8 @@ def main(
     station_to_insar = process_insar_data(
         reader=insar_reader,
         df_gps_stations=df_gps_stations,
-        # reader_temporal_coherence=reader_temporal_coherence,
-        # reader_similarity=reader_similarity,
+        reader_temporal_coherence=reader_temporal_coherence,
+        reader_similarity=reader_similarity,
     )
 
     # Merge GPS and InSAR tables per station
