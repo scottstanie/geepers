@@ -221,9 +221,9 @@ class XarrayReader:
                 continue
 
             # lazily open once, drop the 'band' dim if present  ➜  2-D array
-            da = xr.open_dataset(fp, engine="rasterio").band_data.squeeze(
-                "band", drop=True
-            )
+            da = xr.open_dataset(
+                fp, engine="rasterio", chunks="auto"
+            ).band_data.squeeze("band", drop=True)
 
             # broadcast onto the matching epochs without data copy
             layers.append(da.expand_dims(time=target_times[mask]))
