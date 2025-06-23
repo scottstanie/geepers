@@ -13,6 +13,8 @@ from affine import cached_property
 from pyproj import Transformer
 from rasterio.crs import CRS
 
+from geepers._types import DatetimeLike
+
 from .utils import get_dates
 
 __all__ = ["XarrayReader"]
@@ -173,6 +175,71 @@ class XarrayReader:
                 return "rasterio"
             case _:
                 return None
+
+    @classmethod
+    def from_range_file_list(
+        cls,
+        file_list: Sequence[str | Path],
+        target_times: Sequence[DatetimeLike],
+        file_date_fmt: str = "%Y%m%d",
+        units: str = "unitless",
+    ) -> Self:
+        """Create a 3D reader from a list of range-based rasters.
+
+        Build a reader whose 3-D array has a `time` axis identical to
+        `target_times`, but each slice comes from the single quality raster
+        whose filename-encoded date-range covers that epoch.
+
+        Parameters
+        ----------
+        file_list : Sequence[str | Path]
+            List of files to load.
+        target_times : Sequence[DatetimeLike]
+            The time epochs you want on the output `time` axis.
+            Can come from a `XarrayReader`'s `time` coordinate.
+        file_date_fmt : str
+            Format used by ``get_dates`` (default ``"%Y%m%d"``).
+        units : str
+            Units for the output data (default ``"unitless"``).
+
+        Notes
+        -----
+        Broadcasting is lazy: every epoch that maps to the same file
+          references the same dask array.
+
+        """
+        target_times = pd.to_datetime(target_times)
+        layers: list[xr.DataArray] = []
+
+        # one pass over the files
+        for fp in sorted(file_list):
+            t0, t1 = get_dates(fp, fmt=file_date_fmt)[:2]  # start, end
+            t0, t1 = pd.Timestamp(t0), pd.Timestamp(t1)
+
+            # which epochs fall inside [t0, t1]?
+            mask = (target_times >= t0) & (target_times <= t1)
+            if not mask.any():
+                continue
+
+            # lazily open once, drop the 'band' dim if present  ➜  2-D array
+            da = xr.open_dataset(fp, engine="rasterio").band_data.squeeze(
+                "band", drop=True
+            )
+
+            # broadcast onto the matching epochs (no data copy)
+            layers.append(da.expand_dims(time=target_times[mask]))
+
+        if not layers:
+            msg = "None of the files cover any requested epoch."
+            raise ValueError(msg)
+
+        # stack all the mini-arrays
+        da_out = xr.concat(layers, dim="time").reindex(time=target_times)
+
+        # make sure a units attribute exists so __post_init__ is happy
+        da_out.attrs["units"] = units
+
+        return cls(da_out)
 
     @property
     def ndim(self):
