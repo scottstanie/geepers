@@ -199,9 +199,9 @@ def process_insar_data(
 
 def main(
     *,
-    los_enu_file: Annotated[Path | str, tyro.conf.arg(aliases=["--los"])],
-    timeseries_files: Sequence[Path | str] | None = None,
-    timeseries_stack: Path | str | None = None,
+    los_enu_file: Annotated[str | Path, tyro.conf.arg(aliases=["--los"])],
+    timeseries_files: Sequence[str | Path] | None = None,
+    timeseries_stack: str | Path | None = None,
     output_dir: Annotated[Path, tyro.conf.arg(aliases=["-o"])] = Path("./GPS"),
     file_date_fmt: str = "%Y%m%d",
     stack_data_var: str | None = "displacement",
@@ -265,7 +265,6 @@ def main(
         if timeseries_stack is None:
             msg = "Must provide either timeseries_files or timeseries_stack"
             raise ValueError(msg)
-
         insar_reader = XarrayReader.from_file(timeseries_stack, data_var=stack_data_var)
     else:
         insar_reader = XarrayReader.from_file_list(timeseries_files, file_date_fmt)

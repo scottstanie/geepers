@@ -8,11 +8,11 @@ from typing import TYPE_CHECKING, Self
 
 import numpy as np
 import pandas as pd
-import rasterio as rio
 import xarray as xr
 from affine import cached_property
 from opera_utils import get_dates
 from pyproj import Transformer
+from rasterio.crs import CRS
 
 __all__ = ["XarrayReader"]
 
@@ -64,7 +64,7 @@ class XarrayReader:
         data_var: str | None = None,
         engine: str | None = None,
         nodata: float | None = None,
-        crs: rio.crs.CRS | None = None,
+        crs: CRS | None = None,
         units: str | None = None,
     ) -> Self:
         """Create a XarrayReader from one file.
@@ -82,7 +82,7 @@ class XarrayReader:
             Xarray engine to use for opening the file.
         nodata : float | None
             Nodata value to use.
-        crs : rio.crs.CRS | None
+        crs : rasterio.crs.CRS | None
             CRS to use.
         units : str | None
             Units to use.
@@ -96,6 +96,7 @@ class XarrayReader:
         if Path(filename).suffix == ".zarr":
             ds = xr.open_zarr(filename, consolidated=False)
         else:
+            engine = cls._guess_engine(filename)
             ds = xr.open_dataset(filename, engine=engine)
 
         if data_var is not None:
@@ -156,8 +157,21 @@ class XarrayReader:
             return ds.expand_dims(time=[pd.to_datetime(date)])
 
         ds = xr.open_mfdataset(files, engine="rasterio", preprocess=preprocess)
-        print(ds)
         return cls(ds.band_data)
+
+    @staticmethod
+    def _guess_engine(filename: str | Path) -> str | None:
+        # TODO: Figure out why Xarray is bad at guessing, and uses `h5netcdf`
+        # when i pass zarr or geotiffs...
+        match Path(filename).suffix:
+            case "h5netcdf":
+                return "h5netcdf"
+            case ".zarr":
+                return "zarr"
+            case ".tif":
+                return "rasterio"
+            case _:
+                return None
 
     @property
     def ndim(self):
