@@ -211,12 +211,11 @@ class XarrayReader:
         target_times = pd.to_datetime(target_times)
         layers: list[xr.DataArray] = []
 
-        # one pass over the files
         for fp in sorted(file_list):
             t0, t1 = get_dates(fp, fmt=file_date_fmt)[:2]  # start, end
             t0, t1 = pd.Timestamp(t0), pd.Timestamp(t1)
 
-            # which epochs fall inside [t0, t1]?
+            # Find the epochs fall that inside [t0, t1]?
             mask = (target_times >= t0) & (target_times <= t1)
             if not mask.any():
                 continue
@@ -226,17 +225,17 @@ class XarrayReader:
                 "band", drop=True
             )
 
-            # broadcast onto the matching epochs (no data copy)
+            # broadcast onto the matching epochs without data copy
             layers.append(da.expand_dims(time=target_times[mask]))
 
         if not layers:
             msg = "None of the files cover any requested epoch."
             raise ValueError(msg)
 
-        # stack all the mini-arrays
+        # Stack all the mini-arrays
         da_out = xr.concat(layers, dim="time").reindex(time=target_times)
 
-        # make sure a units attribute exists so __post_init__ is happy
+        # Make sure a units attribute exists so __post_init__ is happy
         da_out.attrs["units"] = units
 
         return cls(da_out)
@@ -299,6 +298,10 @@ class XarrayReader:
             for xx, yy in zip(xa, ya, strict=False)
         ]
 
+    @cached_property
+    def _transformer_from_lonlat(self):
+        return Transformer.from_crs("EPSG:4326", self.crs, always_xy=True)
+
     def read_window(
         self, lon: float, lat: float, buffer_pixels: int = 0, op=round
     ) -> np.ndarray:
@@ -335,10 +338,6 @@ class XarrayReader:
         y_slice = slice(row - buffer_pixels, row + buffer_pixels + 1)
         print(x_slice, y_slice)
         return self.da.isel(x=x_slice, y=y_slice).values
-
-    @cached_property
-    def _transformer_from_lonlat(self):
-        return Transformer.from_crs("EPSG:4326", self.crs, always_xy=True)
 
     @property
     def units(self) -> str:
