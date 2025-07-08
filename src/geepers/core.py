@@ -18,6 +18,7 @@ from tqdm.dask import TqdmCallback
 
 import geepers.gps
 import geepers.rates
+from geepers._types import DatetimeLike
 from geepers.constants import SENTINEL_1_WAVELENGTH
 from geepers.io import XarrayReader
 
@@ -198,6 +199,27 @@ def process_insar_data(
     return station_to_insar
 
 
+def _get_quality_reader(
+    quality_files: Sequence[str | Path] | None,
+    time_array: Sequence[DatetimeLike],
+    file_date_fmt: str = "%Y%m%d",
+) -> XarrayReader | None:
+    if quality_files is None:
+        return None
+
+    # If there is only one file per ministack, then we need to use the range reader
+    if len(quality_files) < len(time_array):
+        return XarrayReader.from_range_file_list(
+            quality_files,
+            time_array,
+            file_date_fmt=file_date_fmt,
+            units="unitless",
+        )
+    else:
+        # Otherwise, the reader will be like other readers
+        return XarrayReader.from_file_list(quality_files, file_date_fmt)
+
+
 def main(
     *,
     los_enu_file: Annotated[str | Path, tyro.conf.arg(aliases=["--los"])],
@@ -271,19 +293,11 @@ def main(
         insar_reader = XarrayReader.from_file_list(timeseries_files, file_date_fmt)
 
     logger.info("Created %s", insar_reader)
-    reader_temporal_coherence = (
-        XarrayReader.from_range_file_list(
-            temporal_coherence_files, insar_reader.da.time, units="unitless"
-        )
-        if temporal_coherence_files is not None
-        else None
+    reader_temporal_coherence = _get_quality_reader(
+        temporal_coherence_files, insar_reader.da.time, file_date_fmt
     )
-    reader_similarity = (
-        XarrayReader.from_range_file_list(
-            similarity_files, insar_reader.da.time, units="unitless"
-        )
-        if similarity_files is not None
-        else None
+    reader_similarity = _get_quality_reader(
+        similarity_files, insar_reader.da.time, file_date_fmt
     )
 
     df_gps_stations = geepers.gps.get_stations_within_image(
