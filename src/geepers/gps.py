@@ -7,7 +7,9 @@ information, and handle GPS time series data.
 from __future__ import annotations
 
 import datetime
+import difflib
 import logging
+import re
 import warnings
 from collections.abc import Sequence
 from pathlib import Path
@@ -178,9 +180,7 @@ def _get_station_plate(station_name: str) -> str:
     response = requests.get(url)
     response.raise_for_status()
 
-    import re
-
-    match = re.search(r"(?P<plate>[A-Z]{2}) Plate Fixed", response.text)
+    match = re.search(r"tenv3\/plates\/(?P<plate>[A-Z]{2})", response.text)
     if not match:
         msg = f"Could not find plate name on {url}"
         raise ValueError(msg)
@@ -407,8 +407,6 @@ def station_lonlat(station_name: str) -> tuple[float, float]:
     df = read_station_llas()
     station_name = station_name.upper()
     if station_name not in df["name"].values:
-        import difflib
-
         closest_names = difflib.get_close_matches(station_name, df["name"], n=5)
         msg = f"No station named {station_name} found. Closest: {closest_names}"
         raise ValueError(msg)

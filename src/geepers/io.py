@@ -130,6 +130,7 @@ class XarrayReader:
         file_list: Sequence[Path | str],
         file_date_fmt: str = "%Y%m%d",
         file_date_idx: int = 1,
+        units: str | None = None,
     ) -> Self:
         """Create a 3D XarrayReader from a list of single-band GDAL-readable files.
 
@@ -141,6 +142,8 @@ class XarrayReader:
             Format string for parsing dates from file names.
         file_date_idx : int
             Index of the date in the file name.
+        units : str | None
+            Units for the output data (default ``"unitless"``).
 
         Returns
         -------
@@ -160,6 +163,8 @@ class XarrayReader:
             return ds.expand_dims(time=[pd.to_datetime(date)])
 
         ds = xr.open_mfdataset(files, engine="rasterio", preprocess=preprocess)
+        if units:
+            ds.band_data.attrs["units"] = units
         return cls(ds.band_data)
 
     @staticmethod
@@ -182,7 +187,7 @@ class XarrayReader:
         file_list: Sequence[str | Path],
         target_times: Sequence[DatetimeLike],
         file_date_fmt: str = "%Y%m%d",
-        units: str = "unitless",
+        units: str | None = None,
     ) -> Self:
         """Create a 3D reader from a list of range-based rasters.
 
@@ -199,7 +204,7 @@ class XarrayReader:
             Can come from a `XarrayReader`'s `time` coordinate.
         file_date_fmt : str
             Format used by ``get_dates`` (default ``"%Y%m%d"``).
-        units : str
+        units : str | None
             Units for the output data (default ``"unitless"``).
 
         Notes
@@ -235,8 +240,9 @@ class XarrayReader:
         # Stack all the mini-arrays
         da_out = xr.concat(layers, dim="time").reindex(time=target_times)
 
-        # Make sure a units attribute exists so __post_init__ is happy
-        da_out.attrs["units"] = units
+        if units:
+            # Make sure a units attribute exists so __post_init__ is happy
+            da_out.attrs["units"] = units
 
         return cls(da_out)
 
