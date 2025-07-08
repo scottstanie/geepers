@@ -217,7 +217,9 @@ def _get_quality_reader(
         )
     else:
         # Otherwise, the reader will be like other readers
-        return XarrayReader.from_file_list(quality_files, file_date_fmt)
+        return XarrayReader.from_file_list(
+            quality_files, file_date_fmt, units="unitless"
+        )
 
 
 def main(
