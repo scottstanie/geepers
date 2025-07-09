@@ -13,6 +13,8 @@ from affine import cached_property
 from pyproj import Transformer
 from rasterio.crs import CRS
 
+from geepers._types import DatetimeLike
+
 from .utils import get_dates
 
 __all__ = ["XarrayReader"]
@@ -128,6 +130,7 @@ class XarrayReader:
         file_list: Sequence[Path | str],
         file_date_fmt: str = "%Y%m%d",
         file_date_idx: int = 1,
+        units: str | None = None,
     ) -> Self:
         """Create a 3D XarrayReader from a list of single-band GDAL-readable files.
 
@@ -139,6 +142,8 @@ class XarrayReader:
             Format string for parsing dates from file names.
         file_date_idx : int
             Index of the date in the file name.
+        units : str | None
+            Units for the output data (default ``"unitless"``).
 
         Returns
         -------
@@ -158,6 +163,8 @@ class XarrayReader:
             return ds.expand_dims(time=[pd.to_datetime(date)])
 
         ds = xr.open_mfdataset(files, engine="rasterio", preprocess=preprocess)
+        if units:
+            ds.band_data.attrs["units"] = units
         return cls(ds.band_data)
 
     @staticmethod
@@ -173,6 +180,71 @@ class XarrayReader:
                 return "rasterio"
             case _:
                 return None
+
+    @classmethod
+    def from_range_file_list(
+        cls,
+        file_list: Sequence[str | Path],
+        target_times: Sequence[DatetimeLike],
+        file_date_fmt: str = "%Y%m%d",
+        units: str | None = None,
+    ) -> Self:
+        """Create a 3D reader from a list of range-based rasters.
+
+        Build a reader whose 3-D array has a `time` axis identical to
+        `target_times`, but each slice comes from the single quality raster
+        whose filename-encoded date-range covers that epoch.
+
+        Parameters
+        ----------
+        file_list : Sequence[str | Path]
+            List of files to load.
+        target_times : Sequence[DatetimeLike]
+            The time epochs you want on the output `time` axis.
+            Can come from a `XarrayReader`'s `time` coordinate.
+        file_date_fmt : str
+            Format used by ``get_dates`` (default ``"%Y%m%d"``).
+        units : str | None
+            Units for the output data (default ``"unitless"``).
+
+        Notes
+        -----
+        Broadcasting is lazy: every epoch that maps to the same file
+          references the same dask array.
+
+        """
+        target_times = pd.to_datetime(target_times)
+        layers: list[xr.DataArray] = []
+
+        for fp in sorted(file_list):
+            t0, t1 = get_dates(fp, fmt=file_date_fmt)[:2]  # start, end
+            t0, t1 = pd.Timestamp(t0), pd.Timestamp(t1)
+
+            # Find the epochs fall that inside [t0, t1]?
+            mask = (target_times >= t0) & (target_times <= t1)
+            if not mask.any():
+                continue
+
+            # lazily open once, drop the 'band' dim if present  ➜  2-D array
+            da = xr.open_dataset(
+                fp, engine="rasterio", chunks="auto"
+            ).band_data.squeeze("band", drop=True)
+
+            # broadcast onto the matching epochs without data copy
+            layers.append(da.expand_dims(time=target_times[mask]))
+
+        if not layers:
+            msg = "None of the files cover any requested epoch."
+            raise ValueError(msg)
+
+        # Stack all the mini-arrays
+        da_out = xr.concat(layers, dim="time").reindex(time=target_times)
+
+        if units:
+            # Make sure a units attribute exists so __post_init__ is happy
+            da_out.attrs["units"] = units
+
+        return cls(da_out)
 
     @property
     def ndim(self):
@@ -232,6 +304,10 @@ class XarrayReader:
             for xx, yy in zip(xa, ya, strict=False)
         ]
 
+    @cached_property
+    def _transformer_from_lonlat(self):
+        return Transformer.from_crs("EPSG:4326", self.crs, always_xy=True)
+
     def read_window(
         self, lon: float, lat: float, buffer_pixels: int = 0, op=round
     ) -> np.ndarray:
@@ -268,10 +344,6 @@ class XarrayReader:
         y_slice = slice(row - buffer_pixels, row + buffer_pixels + 1)
         print(x_slice, y_slice)
         return self.da.isel(x=x_slice, y=y_slice).values
-
-    @cached_property
-    def _transformer_from_lonlat(self):
-        return Transformer.from_crs("EPSG:4326", self.crs, always_xy=True)
 
     @property
     def units(self) -> str:
