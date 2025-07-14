@@ -214,28 +214,44 @@ class XarrayReader:
 
         """
         target_times = pd.to_datetime(target_times)
-        layers: list[xr.DataArray] = []
 
+        # Create a mapping from each target time to its corresponding file
+        time_to_file: dict[int, str] = {}
         for fp in sorted(file_list):
             t0, t1 = get_dates(fp, fmt=file_date_fmt)[:2]  # start, end
             t0, t1 = pd.Timestamp(t0), pd.Timestamp(t1)
 
-            # Find the epochs fall that inside [t0, t1]?
+            # Find the epochs that fall inside [t0, t1]
             mask = (target_times >= t0) & (target_times <= t1)
             if not mask.any():
                 continue
 
-            # lazily open once, drop the 'band' dim if present  ➜  2-D array
+            # Map each matching time to this file
+            for time_idx in np.where(mask)[0]:
+                time_to_file[time_idx] = fp
+
+        if not time_to_file:
+            msg = "None of the files cover any requested epoch."
+            raise ValueError(msg)
+
+        # Group times by file to minimize file opening
+        file_to_times: dict[str | Path, list[int]] = {}
+        for time_idx, fp in time_to_file.items():
+            if fp not in file_to_times:
+                file_to_times[fp] = []
+            file_to_times[fp].append(time_idx)
+
+        # Build layers without duplicates
+        layers: list[xr.DataArray] = []
+        for fp, time_indices in file_to_times.items():
+            # lazily open once, drop the 'band' dim if present
             da = xr.open_dataset(
                 fp, engine="rasterio", chunks="auto"
             ).band_data.squeeze("band", drop=True)
 
             # broadcast onto the matching epochs without data copy
-            layers.append(da.expand_dims(time=target_times[mask]))
-
-        if not layers:
-            msg = "None of the files cover any requested epoch."
-            raise ValueError(msg)
+            matching_times = target_times[time_indices]
+            layers.append(da.expand_dims(time=matching_times))
 
         # Stack all the mini-arrays
         da_out = xr.concat(layers, dim="time").reindex(time=target_times)
