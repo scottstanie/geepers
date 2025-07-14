@@ -1,8 +1,10 @@
 from dataclasses import asdict
 
+import geopandas as gpd
 import numpy as np
 import pandas as pd
 
+from .gps import read_station_llas
 from .midas import MidasResult, midas
 
 EMPTY_MIDAS = MidasResult(np.nan, np.nan, np.nan, np.nan, np.nan, np.array([]))
@@ -10,7 +12,7 @@ EMPTY_MIDAS = MidasResult(np.nan, np.nan, np.nan, np.nan, np.nan, np.array([]))
 
 def calculate_rates(
     df: pd.DataFrame, outlier_threshold: float = 50, to_mm: bool = True
-) -> pd.DataFrame:
+) -> gpd.GeoDataFrame:
     """Calculate rates for each station from GPS and InSAR time series.
 
     Parameters
@@ -25,8 +27,8 @@ def calculate_rates(
 
     Returns
     -------
-    pd.DataFrame
-        DataFrame with GPS and InSAR rates for each station
+    geopandas.GeoDataFrame
+        GeoDataFrame with GPS and InSAR rates for each station
         If `to_mm` is True, output is in mm/year.
         Otherwise, units are no changed (meters/year)
 
@@ -109,8 +111,13 @@ def calculate_rates(
     # Calculate rates for each station
     rates = df_wide.groupby("station").apply(calc_station_metrics, include_groups=False)
 
-    # Remove stations where either rate is NaN
-    # rates = rates.dropna()
+    # Get the longitude and latitude of each station
+    gdf_stations = read_station_llas(to_geodataframe=True)
+    rates = gpd.GeoDataFrame(
+        rates,
+        geometry=gdf_stations[gdf_stations.name.isin(rates.index)].geometry.tolist(),
+    )
+
     return rates
 
 
