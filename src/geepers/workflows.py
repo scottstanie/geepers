@@ -146,7 +146,7 @@ def main(
 
         e, n, u = enu_vec
         df["los_gps"] = df.east * e + df.north * n + df.up * u
-        df["los_gps"] -= df["los_gps"].iloc[:10].mean()  # remove arbitrary offset
+        df["los_gps"] -= np.nanmean(df["los_gps"])  # remove arbitrary offset
         station_to_los_gps[station_row.Index] = df[["los_gps"]]
 
     # Sample InSAR rasters at station locations
