@@ -6,8 +6,8 @@ import pandas as pd
 import pytest
 
 import geepers.gps as gps
-from geepers.core import main
 from geepers.quality import select_gps_reference
+from geepers.workflows import main
 
 
 def test_main(tmp_path, monkeypatch):

@@ -4,7 +4,7 @@ import logging
 
 import tyro
 
-from .core import main
+from .workflows import main
 
 logger = logging.getLogger("geepers")
 logger.setLevel(logging.INFO)
