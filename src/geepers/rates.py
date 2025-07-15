@@ -6,6 +6,7 @@ import pandas as pd
 
 from .gps import read_station_llas
 from .midas import MidasResult, midas
+from .quality import compute_station_quality
 
 EMPTY_MIDAS = MidasResult(np.nan, np.nan, np.nan, np.nan, np.nan, np.array([]))
 
@@ -50,11 +51,9 @@ def calculate_rates(
         years = (group["date"] - group["date"].min()).dt.total_seconds() / (
             365.25 * 24 * 3600
         )
-        time_span_years = years.iloc[-1] - years.iloc[0]
 
         # Start with nans for rates
-        num_gps = gps_velocity_l2 = insar_velocity = insar_velocity_l2 = np.nan
-        tcoh = similarity = np.nan
+        gps_velocity_l2 = insar_velocity = insar_velocity_l2 = np.nan
         const = 1000 if to_mm else 1
 
         # GPS rate
@@ -69,10 +68,8 @@ def calculate_rates(
 
                 group_df = group[["date", "los_gps"]].dropna().set_index("date")
                 gps_midas = const * _get_midas_rate(group_df)
-                num_gps = len(group["los_gps"][mask])
 
         # InSAR rate
-        # insar_midas = EMPTY_MIDAS
         if not group["los_insar"].isna().all():
             mask = ~group["los_insar"].isna()
             if sum(mask) > 2:  # Need at least 3 points for meaningful rate
@@ -82,28 +79,19 @@ def calculate_rates(
                 insar_midas = const * _get_midas_rate(group_df_insar)
                 insar_velocity = insar_midas.velocity
 
-        if not np.isnan(insar_velocity):
-            tcoh = (
-                group["temporal_coherence"].dropna().iloc[0]
-                if "temporal_coherence" in group
-                else None
-            )
-            similarity = (
-                group["similarity"].dropna().iloc[0] if "similarity" in group else None
-            )
+        # Compute station quality metrics
+        station_df = group.set_index("date")
+        quality = compute_station_quality(station_df)
+        quality_dict = asdict(quality)
 
         midas_outputs = _dump_midas(gps_midas, prefix="gps_")
-        # midas_outputs |= _dump_midas(insar_midas, prefix="insar_")
         return pd.Series(
             {
                 "difference": float(insar_velocity - gps_midas.velocity),
                 "insar_velocity": float(insar_velocity),
                 "insar_velocity_l2": float(insar_velocity_l2),
-                "temporal_coherence": tcoh,
-                "similarity": similarity,
-                "num_gps_points": num_gps,
-                "gps_time_span_years": time_span_years,
                 "gps_velocity_l2": gps_velocity_l2,
+                **quality_dict,
                 **midas_outputs,
             }
         )
