@@ -6,7 +6,7 @@ import pandas as pd
 import pytest
 
 import geepers.gps as gps
-from geepers.quality import select_gps_reference
+from geepers.quality import InsufficientDataError, select_gps_reference
 from geepers.workflows import main
 
 
@@ -41,7 +41,7 @@ def test_main(tmp_path, monkeypatch):
         "station": "HLNA",
         "date": "2016-07-23",
         "measurement": "los_gps",
-        "value": 0.0127341801257807,
+        "value": 0.0092162717033488,
     }
     pd.testing.assert_series_equal(
         df[df.station == "HLNA"].iloc[0], pd.Series(expected_entry, name=0)
@@ -119,7 +119,7 @@ def test_select_gps_reference_insufficient_data():
     """Test select_gps_reference with insufficient data."""
     dates = pd.date_range("2023-01-01", periods=10, freq="D")
 
-    # Station with only 10 points (less than min_overlap=30)
+    # Station with only 10 points
     station_a = pd.DataFrame(
         {
             "los_gps": np.random.normal(0, 0.01, 10),
@@ -127,14 +127,28 @@ def test_select_gps_reference_insufficient_data():
         },
         index=dates,
     )
+    station_a.iloc[:6, station_a.columns.get_loc("los_gps")] = np.nan
 
-    station_to_merged = {"STAT_A": station_a}
+    station_b = pd.DataFrame(
+        {
+            "los_gps": np.random.normal(0, 0.01, 10),
+            "los_insar": np.random.normal(0, 0.01, 10),
+        },
+        index=dates,
+    )
 
-    # Should raise RuntimeError due to insufficient data
+    station_to_merged = {"STAT_A": station_a, "STAT_B": station_b}
+    ref_station = select_gps_reference(station_to_merged, min_coverage_fraction=0.5)
+    assert ref_station == "STAT_B"
+
+    station_b.iloc[:6, station_b.columns.get_loc("los_gps")] = np.nan
+
+    # Should raise InsufficientDataError due to insufficient data
     with pytest.raises(
-        RuntimeError, match="Could not determine an automatic reference station"
+        InsufficientDataError,
+        match="Could not determine an automatic reference station",
     ):
-        select_gps_reference(station_to_merged, min_overlap=30)
+        select_gps_reference(station_to_merged, min_coverage_fraction=0.5)
 
 
 def test_select_gps_reference_no_coherence_data():
