@@ -213,16 +213,16 @@ class XarrayReader:
           references the same dask array.
 
         """
-        target_times = pd.to_datetime(target_times)
+        times = pd.to_datetime(target_times)
 
         # Create a mapping from each target time to its corresponding file
-        time_to_file: dict[int, str] = {}
+        time_to_file: dict[int, Path | str] = {}
         for fp in sorted(file_list):
             t0, t1 = get_dates(fp, fmt=file_date_fmt)[:2]  # start, end
             t0, t1 = pd.Timestamp(t0), pd.Timestamp(t1)
 
             # Find the epochs that fall inside [t0, t1]
-            mask = (target_times >= t0) & (target_times <= t1)
+            mask = (times >= t0) & (times <= t1)
             if not mask.any():
                 continue
 
@@ -250,11 +250,11 @@ class XarrayReader:
             ).band_data.squeeze("band", drop=True)
 
             # broadcast onto the matching epochs without data copy
-            matching_times = target_times[time_indices]
+            matching_times = times[time_indices]
             layers.append(da.expand_dims(time=matching_times))
 
         # Stack all the mini-arrays
-        da_out = xr.concat(layers, dim="time").reindex(time=target_times)
+        da_out = xr.concat(layers, dim="time").reindex(time=times)
 
         if units:
             # Make sure a units attribute exists so __post_init__ is happy

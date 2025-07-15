@@ -73,10 +73,9 @@ class MidasResult:
         return self.__mul__(x)
 
 
-# Add a function to cache results where inputs are numpy arrays
-# Useful for the `select_paris` function, which only uses `times`
-# and may be repeatedly called for `east`, or multiple LOS calls
 def np_cache(function):
+    """Cache results where inputs are numpy arrays."""
+
     @cache
     def cached_wrapper(*args, **kwargs):
         args = [np.array(a) if isinstance(a, tuple) else a for a in args]
