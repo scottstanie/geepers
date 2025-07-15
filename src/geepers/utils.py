@@ -5,6 +5,7 @@ import sys
 from collections.abc import Sequence
 from pathlib import Path
 
+import geopandas as gpd
 import numpy as np
 
 from ._types import DateOrDatetime
@@ -169,3 +170,9 @@ def _date_format_to_regex(date_format: str) -> re.Pattern:
 
     # Return the resulting regular expression
     return re.compile(date_format)
+
+
+def read_geo_csv(filename: Path | str) -> gpd.GeoDataFrame:
+    """Read a CSV file with a geometry column."""
+    df = gpd.read_file(filename)  # This just returns a pandas DataFrame
+    return gpd.GeoDataFrame(df, geometry=gpd.GeoSeries.from_wkt(df.geometry))
