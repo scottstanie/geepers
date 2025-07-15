@@ -101,10 +101,14 @@ def station_quality_to_dict(quality: StationQuality) -> dict[str, float | int | 
     return asdict(quality)
 
 
+class InsufficientDataError(Exception):
+    """Exception when there is insufficient data to determine a reference station."""
+
+
 def select_gps_reference(
     station_to_merged_df: Mapping[str, pd.DataFrame],
+    min_coverage_fraction: float = 0.8,
     coherence_priority: bool = True,
-    min_overlap: int = 30,
 ) -> str:
     """Pick a reference station when the user doesn't supply one.
 
@@ -112,10 +116,21 @@ def select_gps_reference(
     ----------
     station_to_merged_df
         Merged GPS/InSAR tables keyed by station name.
+    min_coverage_fraction
+        Minimum fraction of epochs required to consider a station.
+        This is used to filter out stations with insufficient with InSAR data.
     coherence_priority
         If `True`, prefer highest mean temporal-coherence; otherwise, use RMSE.
-    min_overlap
-        Minimum common epochs required to consider a station.
+
+    Returns
+    -------
+    str
+        Name of the selected reference station.
+
+    Raises
+    ------
+    InsufficientDataError
+        If no stations have sufficient overlap with InSAR data.
 
     """
     # Compute quality metrics for all stations
@@ -124,11 +139,23 @@ def select_gps_reference(
         for station, df in station_to_merged_df.items()
     }
 
+    # Get total time for the InSAR data
+    max_insar_time = pd.Series(
+        [d.index.max() for d in station_to_merged_df.values()]
+    ).max()
+    min_insar_time = pd.Series(
+        [d.index.min() for d in station_to_merged_df.values()]
+    ).min()
+
+    # los_insar
+    total_time = max_insar_time - min_insar_time
+    total_days = total_time.total_seconds() / (24 * 3600)
+
     # Filter stations with insufficient overlap
     candidate_stations = {
         station: quality
         for station, quality in qualities.items()
-        if quality.num_gps >= min_overlap
+        if quality.num_gps >= (min_coverage_fraction * total_days)
     }
 
     if not candidate_stations:
@@ -136,7 +163,7 @@ def select_gps_reference(
             "Could not determine an automatic reference station "
             "(insufficient overlapping data)."
         )
-        raise RuntimeError(msg)
+        raise InsufficientDataError(msg)
 
     # Select best station based on quality metrics
     if coherence_priority:
