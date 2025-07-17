@@ -7,12 +7,16 @@ import pandas as pd
 from .gps import read_station_llas
 from .midas import MidasResult, midas
 from .quality import compute_station_quality
+from .schemas import RatesSchema
 
 EMPTY_MIDAS = MidasResult(np.nan, np.nan, np.nan, np.nan, np.nan, np.array([]))
 
 
 def calculate_rates(
-    df: pd.DataFrame, outlier_threshold: float = 50, to_mm: bool = True
+    df: pd.DataFrame,
+    outlier_threshold: float = 50,
+    use_midas_for_insar: bool = False,
+    to_mm: bool = True,
 ) -> gpd.GeoDataFrame:
     """Calculate rates for each station from GPS and InSAR time series.
 
@@ -22,6 +26,9 @@ def calculate_rates(
         DataFrame with columns: station, date, measurement, value
     outlier_threshold : float
         Remove measurements with absolute values greater than this
+    use_midas_for_insar : bool
+        If True, use MIDAS to calculate InSAR rate.
+        Otherwise, use least squares fit.
     to_mm : bool
         If True, output is in mm/year.
         Otherwise, units are no changed (meters/year)
@@ -29,9 +36,10 @@ def calculate_rates(
     Returns
     -------
     geopandas.GeoDataFrame
-        GeoDataFrame with GPS and InSAR rates for each station
+        GeoDataFrame with GPS and InSAR rates for each station.
         If `to_mm` is True, output is in mm/year.
-        Otherwise, units are no changed (meters/year)
+        Otherwise, units are no changed (meters/year).
+        Includes sigma_los_mm column if uncertainty data is available.
 
     """
     # Convert date to datetime if it's not already
@@ -45,39 +53,38 @@ def calculate_rates(
         index=["station", "date"], columns="measurement", values="value"
     ).reset_index()
 
+    # TODO: Make the schema to validate the pivoted data
+
     # Function to calculate rate for a single station's time series
-    def calc_station_metrics(group):
+    def calc_station_metrics(group: pd.DataFrame) -> pd.Series:
         # Convert dates to years since first measurement
         years = (group["date"] - group["date"].min()).dt.total_seconds() / (
             365.25 * 24 * 3600
         )
 
         # Start with nans for rates
-        gps_velocity_l2 = insar_velocity = insar_velocity_l2 = np.nan
+        insar_velocity = np.nan
         const = 1000 if to_mm else 1
 
         # GPS rate
         gps_midas = EMPTY_MIDAS
         if not group["los_gps"].isna().all():
             mask = ~group["los_gps"].isna()
-            if sum(mask) > 2:  # Need at least 3 points for meaningful rate
-                # Calculate rates using least squares fit
-                gps_velocity_l2 = (
-                    np.polyfit(years[mask], group["los_gps"][mask], 1)[0] * const
-                )
-
-                group_df = group[["date", "los_gps"]].dropna().set_index("date")
-                gps_midas = const * _get_midas_rate(group_df)
+            group_df = group[["date", "los_gps"]].dropna().set_index("date")
+            gps_midas = const * _get_midas_rate(group_df)
 
         # InSAR rate
         if not group["los_insar"].isna().all():
             mask = ~group["los_insar"].isna()
-            if sum(mask) > 2:  # Need at least 3 points for meaningful rate
-                x, y = np.array(years[mask]), np.array(group["los_insar"][mask])
-                insar_velocity_l2 = np.polyfit(x, y, 1)[0] * const
+            if use_midas_for_insar:
                 group_df_insar = group[["date", "los_insar"]].dropna().set_index("date")
                 insar_midas = const * _get_midas_rate(group_df_insar)
                 insar_velocity = insar_midas.velocity
+            else:
+                x, y = np.array(years[mask]), np.array(group["los_insar"][mask])
+                insar_velocity = (
+                    np.nan if len(x) < 2 else np.polyfit(x, y, 1)[0] * const
+                )
 
         # Compute station quality metrics
         station_df = group.set_index("date")
@@ -85,26 +92,28 @@ def calculate_rates(
         quality_dict = asdict(quality)
 
         midas_outputs = _dump_midas(gps_midas, prefix="gps_")
+
+        # Compute LOS uncertainty in the rates
+        # TODO: this is not implemented for the rate from the observations
         return pd.Series(
             {
                 "difference": float(insar_velocity - gps_midas.velocity),
                 "insar_velocity": float(insar_velocity),
-                "insar_velocity_l2": float(insar_velocity_l2),
-                "gps_velocity_l2": gps_velocity_l2,
                 **quality_dict,
                 **midas_outputs,
             }
         )
 
     # Calculate rates for each station
-    rates = df_wide.groupby("station").apply(calc_station_metrics, include_groups=False)
-
+    rates = df_wide.groupby("station").apply(calc_station_metrics, include_groups=False)  # type: ignore[call-overload]
     # Get the longitude and latitude of each station
     gdf_stations = read_station_llas(to_geodataframe=True)
     rates = gpd.GeoDataFrame(
         rates,
         geometry=gdf_stations[gdf_stations.name.isin(rates.index)].geometry.tolist(),
     )
+
+    rates = RatesSchema.validate(rates, lazy=True)
 
     return rates
 

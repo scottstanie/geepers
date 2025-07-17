@@ -23,6 +23,7 @@ from shapely.geometry import box
 
 from geepers import utils
 from geepers.io import XarrayReader
+from geepers.schemas import StationObservationSchema
 
 from ._types import PathOrStr
 
@@ -232,6 +233,7 @@ def load_station_enu(
             raise ValueError(msg)
 
     df = pd.read_csv(gps_data_file, sep=r"\s+", engine="c")
+    # Add station name and standardize column names
     df = _clean_gps_df(df, start_date, end_date, coords="enu")
 
     if zero_by.lower() == "mean":
@@ -244,7 +246,8 @@ def load_station_enu(
         msg = "zero_by must be either 'mean' or 'start'"
         raise ValueError(msg)
 
-    return df.set_index("date")
+    StationObservationSchema.validate(df, lazy=True)
+    return df
 
 
 def _clean_gps_df(
@@ -289,6 +292,9 @@ def _clean_gps_df(
     if end_date:
         df = df[df["date"] <= pd.to_datetime(end_date)]
 
+    # NOTE: recently they added
+    # _latitude(deg) _longitude(deg) __height(m)
+    # TODO: check if we should use this here
     if coords == "enu":
         df_integer = df[["_e0(m)", "____n0(m)", "u0(m)"]]
         df_out = df[
@@ -300,6 +306,9 @@ def _clean_gps_df(
                 "sig_e(m)",
                 "sig_n(m)",
                 "sig_u(m)",
+                "__corr_en",
+                "__corr_eu",
+                "__corr_nu",
             ]
         ]
         # Combine the integer e/n/u part with the fractional
@@ -311,6 +320,16 @@ def _clean_gps_df(
         raise ValueError(msg)
 
     df_out = df_out.rename(columns=lambda s: s.replace("_", "").replace("(m)", ""))
+    df_out = df_out.rename(
+        columns={
+            "sige": "sigma_east",
+            "sign": "sigma_north",
+            "sigu": "sigma_up",
+            "corren": "corr_en",
+            "correu": "corr_eu",
+            "corrnu": "corr_nu",
+        }
+    )
     return df_out.reset_index(drop=True)
 
 
@@ -339,7 +358,7 @@ def download_station_locations(filename: PathOrStr, url: str) -> None:
 
 def read_station_llas(
     filename: PathOrStr | None = None, to_geodataframe: bool = False
-) -> pd.DataFrame:
+) -> pd.DataFrame:  # type: ignore[return-value]
     """Read the station latitude, longitude, and altitude (LLA) data.
 
     Parameters
