@@ -6,19 +6,19 @@ import logging
 import warnings
 from collections.abc import Sequence
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Literal
 
 import numpy as np
 import pandas as pd
+import rasterio.warp
 import requests
 import tyro
 from tqdm.auto import tqdm
 from tqdm.contrib.concurrent import thread_map
 
-import geepers.gps
 import geepers.rates
 from geepers.analysis import compare_relative_gps_insar, create_tidy_df
-from geepers.gps_sources.unr import UnrSource
+from geepers.gps_sources import SideshowSource, UnrSource
 from geepers.io import XarrayReader
 from geepers.processing import get_quality_reader, process_insar_data
 from geepers.quality import select_gps_reference
@@ -34,6 +34,7 @@ def main(
     timeseries_stack: str | Path | None = None,
     output_dir: Annotated[Path, tyro.conf.arg(aliases=["-o"])] = Path("./GPS"),
     file_date_fmt: str = "%Y%m%d",
+    gps_source: Literal["unr", "jpl"] = "unr",
     stack_data_var: str | None = "displacement",
     reference_station: Annotated[str | None, tyro.conf.arg(aliases=["--ref"])] = None,
     temporal_coherence_files: Sequence[str | Path] | None = None,
@@ -55,16 +56,20 @@ def main(
     timeseries_stack
         Path to an xarray stack of wrapped-phase (or displacement) rasters.
         Alternative to `timeseries_files`
-    output_dir
+    output_dir : Path | str
         Directory where CSV outputs will be written.  Will be created if it does
         not exist.
-    file_date_fmt
+    file_date_fmt : str
         ``strftime`` pattern describing how dates are embedded in
         `timeseries_files`.
-    stack_data_var
+        Default is "%Y%m%d"
+    gps_source : str
+        GNSS data source.
+        Choices are "unr" or "jpl". See `geepers.gps_sources`.
+    stack_data_var : str
         Name of the variable in the timeseries stack to use for InSAR data.
         If `None`, the `timeseries_stack` must have only one data variable.
-    reference_station
+    reference_station : str
         Optional GPS station name - if provided, relative displacements are
         computed with respect to this station.
     temporal_coherence_files, similarity_files
@@ -73,14 +78,14 @@ def main(
 
     Notes
     -----
-    The script writes three CSV files into *output_dir*:
+    The script writes three CSV files into `output_dir`:
 
-    ``combined_data.csv``
+    combined_data.csv
         Tidy table stacking raw GPS and InSAR series for each station.
-    ``relative_comparison.csv``
-        Relative GPS/InSAR displacements if *reference_station* was specified,
+    relative_comparison.csv
+        Relative GPS/InSAR displacements if `reference_station` was specified,
         if `reference_station` is not `None`.
-    ``station_summary.csv``
+    station_summary.csv
         Per-station linear rates (mm/yr) computed from the combined table.
 
     """
@@ -102,16 +107,14 @@ def main(
     )
 
     # Get GPS stations within image bounds using new API
-    unr_source = UnrSource()
-    import rasterio.warp
-
+    source = UnrSource() if gps_source == "unr" else SideshowSource()
     if insar_reader.crs != "EPSG:4326":
         bounds = rasterio.warp.transform_bounds(
             insar_reader.crs, "EPSG:4326", *insar_reader.da.rio.bounds()
         )
     else:
         bounds = insar_reader.da.rio.bounds()
-    df_gps_stations = unr_source.stations(bbox=bounds)
+    df_gps_stations = source.stations(bbox=bounds)
     df_gps_stations.set_index("id", inplace=True)
 
     start_date = insar_reader.da.time[0].to_pandas()
@@ -119,7 +122,7 @@ def main(
 
     def _load_or_none(name: str) -> pd.DataFrame | None:
         try:
-            return unr_source.timeseries(
+            return source.timeseries(
                 name, frame="ENU", start_date=start_date, end_date=end_date
             )
         except requests.HTTPError:
