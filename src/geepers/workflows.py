@@ -18,6 +18,7 @@ from tqdm.contrib.concurrent import thread_map
 import geepers.gps
 import geepers.rates
 from geepers.analysis import compare_relative_gps_insar, create_tidy_df
+from geepers.gps_sources.unr import UnrSource
 from geepers.io import XarrayReader
 from geepers.processing import get_quality_reader, process_insar_data
 from geepers.quality import select_gps_reference
@@ -100,18 +101,26 @@ def main(
         similarity_files, insar_reader.da.time, file_date_fmt
     )
 
-    df_gps_stations = geepers.gps.get_stations_within_image(
-        insar_reader, mask_invalid=False
-    )
-    df_gps_stations.set_index("name", inplace=True)
+    # Get GPS stations within image bounds using new API
+    unr_source = UnrSource()
+    import rasterio.warp
+
+    if insar_reader.crs != "EPSG:4326":
+        bounds = rasterio.warp.transform_bounds(
+            insar_reader.crs, "EPSG:4326", *insar_reader.da.rio.bounds()
+        )
+    else:
+        bounds = insar_reader.da.rio.bounds()
+    df_gps_stations = unr_source.stations(bbox=bounds)
+    df_gps_stations.set_index("id", inplace=True)
 
     start_date = insar_reader.da.time[0].to_pandas()
     end_date = insar_reader.da.time[-1].to_pandas()
 
     def _load_or_none(name: str) -> pd.DataFrame | None:
         try:
-            return geepers.gps.load_station_enu(
-                station_name=name, start_date=start_date, end_date=end_date
+            return unr_source.timeseries(
+                name, frame="ENU", start_date=start_date, end_date=end_date
             )
         except requests.HTTPError:
             return None
@@ -126,23 +135,19 @@ def main(
     los_reader = XarrayReader.from_file(los_enu_file, units="unitless")
     station_to_los_gps: dict[str, pd.DataFrame] = {}
 
-    for station_row, df in tqdm(
+    for station_id, df in tqdm(
         zip(df_gps_stations.itertuples(), df_gps_list, strict=True),
         total=len(df_gps_stations),
         desc="Projecting GPS -> LOS",
     ):
         if df is None:
-            warnings.warn(
-                f"Failed to download {station_row.Index}; skipping.", stacklevel=2
-            )
+            warnings.warn(f"Failed to download {station_id}; skipping.", stacklevel=2)
             continue
 
-        enu_vec = np.nan_to_num(
-            los_reader.read_lon_lat(station_row.lon, station_row.lat)
-        )
+        enu_vec = np.nan_to_num(los_reader.read_lon_lat(station_id.lon, station_id.lat))
         assert enu_vec.shape == (3,)
         if np.allclose(enu_vec, 0):
-            logger.info(f"{station_row.Index} lies has nodata in LOS raster; skipping.")
+            logger.info(f"{station_id} lies has nodata in LOS raster; skipping.")
             continue
 
         e, n, u = enu_vec
@@ -155,7 +160,7 @@ def main(
             df["sigma_los"] = get_sigma_los_df(df, enu_vec)
 
         df_subset = df[["date", "los_gps", "sigma_los"]].set_index("date")
-        station_to_los_gps[station_row.Index] = df_subset
+        station_to_los_gps[station_id.Index] = df_subset
 
     # Sample InSAR rasters at station locations
     logger.info("Sampling InSAR rasters at station locations")
@@ -169,10 +174,10 @@ def main(
     # Merge GPS and InSAR tables per station
     logger.info("Merging GPS and InSAR tables per station")
     station_to_merged: dict[str, pd.DataFrame] = {}
-    for name in tqdm(station_to_los_gps, desc="Merging GPS and InSAR"):
-        station_to_merged[name] = pd.merge(
-            station_to_los_gps[name],
-            station_to_insar[name],
+    for station_id in tqdm(station_to_los_gps, desc="Merging GPS and InSAR"):
+        station_to_merged[station_id] = pd.merge(
+            station_to_los_gps[station_id],
+            station_to_insar[station_id],
             how="left",
             left_index=True,
             right_index=True,

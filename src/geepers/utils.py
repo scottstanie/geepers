@@ -176,3 +176,28 @@ def read_geo_csv(filename: Path | str) -> gpd.GeoDataFrame:
     """Read a CSV file with a geometry column."""
     df = gpd.read_file(filename)  # This just returns a pandas DataFrame
     return gpd.GeoDataFrame(df, geometry=gpd.GeoSeries.from_wkt(df.geometry))
+
+
+def decimal_year_to_datetime(decimal_year: float) -> datetime.datetime:
+    """Convert a decimal year to a datetime object.
+
+    See https://geodesy.unr.edu/NGLStationPages/DecimalYearConvention for
+    more information, or https://geodesy.unr.edu/NGLStationPages/decyr.txt
+    for a mapping from decimal year to datetime (with hour precision).
+
+    Parameters
+    ----------
+    decimal_year : float
+        Year expressed as a decimal (e.g., 2014.5).
+
+    Returns
+    -------
+    datetime.datetime
+        Corresponding calendar datetime (approximate to nearest day).
+
+    """
+    start_year = 1990
+    seconds_per_year = 365.25 * 24 * 3600
+    return datetime.datetime(1990, 1, 1) + datetime.timedelta(
+        seconds=(decimal_year - start_year) * seconds_per_year
+    )
