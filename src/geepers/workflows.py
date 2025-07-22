@@ -38,6 +38,8 @@ def main(
     reference_station: Annotated[str | None, tyro.conf.arg(aliases=["--ref"])] = None,
     temporal_coherence_files: Sequence[str | Path] | None = None,
     similarity_files: Sequence[str | Path] | None = None,
+    insar_buffer: int = 0,
+    gps_time_window: int = 30,
 ) -> None:
     """Compare InSAR time series to GPS observations along the line-of-sight.
 
@@ -70,6 +72,13 @@ def main(
     temporal_coherence_files, similarity_files
         Optional rasters providing per-pixel temporal coherence and phase
         similarity which will be sampled at station locations.
+    insar_buffer
+        Number of pixels to buffer around each GPS station when sampling InSAR
+        data. Uses median averaging, ignoring NaN values, to reduce noise through
+        spatial averaging. Default is 0 (single pixel).
+    gps_time_window
+        Number of days for GPS rolling average window to reduce temporal noise.
+        Default is 30 days.
 
     Notes
     -----
@@ -154,6 +163,14 @@ def main(
         df["los_gps"] = df.east * e + df.north * n + df.up * u
         if df["los_gps"].size > 0:
             df["los_gps"] -= np.nanmean(df["los_gps"])  # remove arbitrary offset
+
+        # Apply rolling average if requested
+        if gps_time_window > 0:
+            df["los_gps"] = (
+                df["los_gps"]
+                .rolling(window=f"{gps_time_window}D", center=True, min_periods=1)
+                .median()
+            )
         # Compute the LOS uncertainty
         # RuntimeWarning
         with warnings.catch_warnings(action="ignore", category=RuntimeWarning):
@@ -169,6 +186,7 @@ def main(
         df_gps_stations=df_gps_stations,
         reader_temporal_coherence=reader_temporal_coherence,
         reader_similarity=reader_similarity,
+        insar_buffer=insar_buffer,
     )
 
     # Merge GPS and InSAR tables per station
