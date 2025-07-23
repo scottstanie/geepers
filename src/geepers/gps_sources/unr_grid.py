@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Literal
 import geopandas as gpd
 import pandas as pd
 import requests
+from requests.adapters import HTTPAdapter, Retry
 from tqdm.contrib.concurrent import thread_map
 
 from geepers.schemas import GridCellSchema, StationObservationSchema
@@ -151,6 +152,7 @@ class UnrGridSource(BaseGpsSource):
         grid_id: str,
         plate: Literal["NA", "PA", "IGS14"] = "IGS14",
         output_dir: Path | None = None,
+        session: requests.Session | None = None,
     ) -> Path:
         """Download ont .tenv8 data file.
 
@@ -163,6 +165,9 @@ class UnrGridSource(BaseGpsSource):
         output_dir : Path | None, optional
             Directory to store downloaded data files.
             If None, the cache directory is used.
+        session : requests.Session
+            A shared requests.Session object.
+            Can be used for retrying.
 
         Returns
         -------
@@ -177,11 +182,13 @@ class UnrGridSource(BaseGpsSource):
         url = GRID_DATA_BASE_URL.format(plate=plate, grid_id=grid_id)
         dest = output_dir / url.rsplit("/", 1)[-1]
         if not dest.exists():
-            resp = requests.get(url, stream=True)
+            if session is None:
+                resp = requests.get(url)
+            else:
+                resp = session.get(url)
             resp.raise_for_status()
             with dest.open("wb") as f:
-                for chunk in resp.iter_content(chunk_size=8192):
-                    f.write(chunk)
+                f.write(resp.content)
         return dest
 
     def download_data_files(
@@ -218,12 +225,17 @@ class UnrGridSource(BaseGpsSource):
         if grid_id_list is None:
             grid_id_list = self.stations().index.tolist()
 
+        s = requests.Session()
+        retries = Retry(total=5, backoff_factor=1, status_forcelist=[502, 503, 504])
+        s.mount("https://", HTTPAdapter(max_retries=retries))
+
         return thread_map(
             self._download_file,
             grid_id_list,
             plate=plate,
             output_dir=output_dir,
             max_workers=max_workers,
+            session=s,
             desc="Downloading data files",
         )
 
