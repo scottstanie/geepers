@@ -40,7 +40,7 @@ def main(
     temporal_coherence_files: Sequence[str | Path] | None = None,
     similarity_files: Sequence[str | Path] | None = None,
     insar_buffer: int = 0,
-    gps_time_window: int = 30,
+    gps_time_window: int = 10,
 ) -> None:
     """Compare InSAR time series to GPS observations along the line-of-sight.
 
@@ -157,12 +157,12 @@ def main(
             continue
 
         enu_vec = np.nan_to_num(
-            los_reader.read_lon_lat(station_row.lon, station_row.lat)
-        )
-        assert enu_vec.shape == (3,)
-        if np.allclose(enu_vec, 0):
-            logger.info(f"{station_row} lies has nodata in LOS raster; skipping.")
+            los_reader.read_window(station_row.lon, station_row.lat, 0)
+        ).squeeze()
+        if enu_vec.size == 0 or np.allclose(enu_vec, 0):
+            logger.info(f"{station_row} lies outside LOS raster bounds; skipping.")
             continue
+        assert enu_vec.shape == (3,)
 
         e, n, u = enu_vec
         df["los_gps"] = df.east * e + df.north * n + df.up * u
@@ -173,11 +173,10 @@ def main(
         if gps_time_window > 0:
             df["los_gps"] = (
                 df["los_gps"]
-                .rolling(window=f"{gps_time_window}D", center=True, min_periods=1)
+                .rolling(window=gps_time_window, center=True, min_periods=1)
                 .median()
             )
         # Compute the LOS uncertainty
-        # RuntimeWarning
         with warnings.catch_warnings(action="ignore", category=RuntimeWarning):
             df["sigma_los"] = get_sigma_los_df(df, enu_vec)
 
