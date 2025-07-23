@@ -50,10 +50,8 @@ def sample_insar(
         desc=f"Sampling {reader.da.name} (buffered by {buffer_pixels} pixels)"
     ):
         windows_list = reader.read_window(lons, lats, buffer_pixels)
-        averaged = xr.concat(
-            [window.median(dim=("x", "y"), skipna=True) for window in windows_list],
-            dim="pixel",
-        )
+        p = [w.median(dim=("x", "y"), skipna=True) for w in windows_list]
+        averaged = xr.concat(p, dim="pixel")
         a = averaged.compute()
     return a
 
