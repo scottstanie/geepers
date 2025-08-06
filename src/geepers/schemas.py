@@ -85,11 +85,7 @@ class GPSUncertaintySchema(DataFrameModel):
     corr_nu: Series[float] = Field(ge=-1, le=1)
 
 
-class StationUncertaintySchema(GPSUncertaintySchema):
-    """Legacy alias for GPSUncertaintySchema for backward compatibility."""
-
-
-class StationObservationSchema(StationUncertaintySchema):
+class StationObservationSchema(GPSUncertaintySchema):
     """GNSS E/N/U observations with uncertainties for a single station."""
 
     date: pd.Timestamp = Field(coerce=True)

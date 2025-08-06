@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GeoJSON Time Series Viewer</title>
+
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+        integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+
+    <!-- Tailwind CSS for styling UI elements -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- Custom Styles -->
+    <style>
+        /* Ensure the map container fills the viewport */
+        html,
+        body {
+            height: 100%;
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            /* Prevent scrollbars */
+            font-family: 'Inter', sans-serif;
+        }
+
+        #map {
+            height: 100%;
+            width: 100%;
+            background-color: #f0f0f0;
+        }
+
+        /* Style for the UI controls panel */
+        .controls {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            z-index: 1000;
+            /* Ensure controls are on top of the map */
+            background: rgba(255, 255, 255, 0.9);
+            padding: 1rem;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+            width: 320px;
+        }
+
+        .control-group {
+            margin-bottom: 1rem;
+        }
+
+        .control-group label {
+            display: block;
+            margin-bottom: 0.5rem;
+            font-weight: 500;
+            color: #374151;
+        }
+
+        .control-group input,
+        .control-group select {
+            width: 100%;
+            padding: 0.5rem;
+            border-radius: 4px;
+            border: 1px solid #D1D5DB;
+        }
+
+        .date-slider {
+            -webkit-appearance: none;
+            width: 100%;
+            height: 8px;
+            background: #d3d3d3;
+            outline: none;
+            opacity: 0.7;
+            -webkit-transition: .2s;
+            transition: opacity .2s;
+            border-radius: 5px;
+        }
+
+        .date-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 20px;
+            height: 20px;
+            background: #3B82F6;
+            cursor: pointer;
+            border-radius: 50%;
+        }
+
+        .date-slider::-moz-range-thumb {
+            width: 20px;
+            height: 20px;
+            background: #3B82F6;
+            cursor: pointer;
+            border-radius: 50%;
+        }
+
+        /* Color Legend */
+        .legend {
+            line-height: 18px;
+            color: #555;
+        }
+
+        .legend i {
+            width: 18px;
+            height: 18px;
+            float: left;
+            margin-right: 8px;
+            opacity: 0.9;
+            border-radius: 50%;
+        }
+    </style>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&display=swap" rel="stylesheet">
+</head>
+
+<body>
+
+    <!-- The container for the map -->
+    <div id="map"></div>
+
+    <!-- The UI controls panel -->
+    <div class="controls">
+        <h2 class="text-xl font-bold mb-4 text-gray-800">Map Controls</h2>
+
+        <!-- Date Slider -->
+        <div class="control-group">
+            <label for="date-slider" id="date-label">Date:</label>
+            <input type="range" id="date-slider" class="date-slider">
+        </div>
+
+        <!-- Property Dropdown -->
+        <div class="control-group">
+            <label for="property-selector">Color by Property:</label>
+            <select id="property-selector">
+                <option value="east" selected>East</option>
+                <option value="north">North</option>
+                <option value="up">Up</option>
+                <option value="sigma_east" selected>Sigma East</option>
+                <option value="sigma_north">Sigma North</option>
+                <option value="sigma_up">Sigma Up</option>
+            </select>
+        </div>
+
+        <!-- Color Scale Limits -->
+        <div class="control-group">
+            <label>Color Scale Range:</label>
+            <div class="flex space-x-2">
+                <input type="number" id="color-min" placeholder="Min" class="w-1/2">
+                <input type="number" id="color-max" placeholder="Max" class="w-1/2">
+            </div>
+            <button id="auto-scale-btn"
+                class="mt-2 w-full bg-gray-200 hover:bg-gray-300 text-gray-700 font-semibold py-2 px-4 rounded-md text-sm">Auto-detect
+                Scale</button>
+        </div>
+        <div id="message-box" class="hidden p-3 mt-4 text-sm text-red-700 bg-red-100 rounded-lg" role="alert">
+            <span class="font-medium">Error:</span> <span id="message-text"></span>
+        </div>
+    </div>
+
+    <!-- Leaflet JS -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+        integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+    <!-- Chroma.js for color scales -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/chroma-js/2.4.2/chroma.min.js"></script>
+
+    <script>
+        // --- CONFIGURATION ---
+        // Adjust the start and end dates to match your dataset.
+        const startDate = '2016-01-01';
+        const endDate = '2025-01-01'; // Example: first month of 2016
+        const geojsonDirectory = 'geojson_sources'; // The folder where your files are located
+        // --- END CONFIGURATION ---
+
+        // --- GLOBAL VARIABLES ---
+        let map;
+        let geoJsonLayer;
+        let legend;
+        let allDates = [];
+        let currentData; // To store the currently loaded GeoJSON
+
+        // --- UI ELEMENTS ---
+        const dateSlider = document.getElementById('date-slider');
+        const dateLabel = document.getElementById('date-label');
+        const propertySelector = document.getElementById('property-selector');
+        const colorMinInput = document.getElementById('color-min');
+        const colorMaxInput = document.getElementById('color-max');
+        const autoScaleBtn = document.getElementById('auto-scale-btn');
+        const messageBox = document.getElementById('message-box');
+        const messageText = document.getElementById('message-text');
+
+        /**
+         * Generates an array of date strings between a start and end date.
+         * @param {string} start - Start date in 'YYYY-MM-DD' format.
+         * @param {string} end - End date in 'YYYY-MM-DD' format.
+         * @returns {string[]} An array of date strings.
+         */
+        function generateDateRange(start, end) {
+            const dates = [];
+            let currentDate = new Date(start + 'T00:00:00'); // Use T00:00:00 to avoid timezone issues
+            const stopDate = new Date(end + 'T00:00:00');
+            while (currentDate <= stopDate) {
+                dates.push(currentDate.toISOString().split('T')[0]);
+                currentDate.setDate(currentDate.getDate() + 1);
+            }
+            return dates;
+        }
+
+        /**
+         * Initializes the Leaflet map.
+         */
+        function initMap() {
+            map = L.map('map').setView([34.0522, -118.2437], 6); // Centered on Southern California/Arizona
+
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+            }).addTo(map);
+
+            // Initialize the legend
+            legend = L.control({ position: 'bottomright' });
+            legend.onAdd = function (map) {
+                const div = L.DomUtil.create('div', 'info legend bg-white p-2 rounded-md shadow-md');
+                div.innerHTML = '<h4>Color Legend</h4><div id="legend-content">No data loaded</div>';
+                return div;
+            };
+            legend.addTo(map);
+        }
+
+        /**
+         * Displays an error message in the message box.
+         * @param {string} text - The error message to display.
+         */
+        function showMessage(text) {
+            messageText.textContent = text;
+            messageBox.classList.remove('hidden');
+        }
+
+        /**
+         * Hides the message box.
+         */
+        function hideMessage() {
+            messageBox.classList.add('hidden');
+        }
+
+
+        /**
+         * Fetches GeoJSON data for a specific date and updates the map.
+         */
+        async function updateMap() {
+            hideMessage();
+            const dateIndex = parseInt(dateSlider.value, 10);
+            const selectedDate = allDates[dateIndex];
+            const property = propertySelector.value;
+
+            if (!selectedDate) return;
+
+            // Update the date label
+            dateLabel.textContent = `Date: ${selectedDate}`;
+
+            try {
+                const response = await fetch(`${geojsonDirectory}/${selectedDate}.geojson`);
+                if (!response.ok) {
+                    throw new Error(`File not found or couldn't be loaded: ${selectedDate}.geojson (Status: ${response.status})`);
+                }
+                currentData = await response.json();
+
+                renderData(property);
+
+            } catch (error) {
+                console.error('Error loading GeoJSON:', error);
+                showMessage(error.message);
+                // If a file fails to load, clear the existing layer
+                if (geoJsonLayer) {
+                    map.removeLayer(geoJsonLayer);
+                }
+            }
+        }
+
+        /**
+         * Renders the currently loaded data onto the map.
+         * @param {string} property - The property to use for coloring ('east', 'north', 'up').
+         */
+        function renderData(property) {
+            if (!currentData || !currentData.features || currentData.features.length === 0) {
+                if (geoJsonLayer) map.removeLayer(geoJsonLayer);
+                updateLegend(); // Clear legend
+                return;
+            }
+
+            // Determine color scale range
+            let colorMin = parseFloat(colorMinInput.value);
+            let colorMax = parseFloat(colorMaxInput.value);
+
+            // If inputs are empty, auto-calculate the range from the data
+            if (isNaN(colorMin) || isNaN(colorMax)) {
+                const values = currentData.features.map(f => f.properties[property]).filter(v => v != null);
+                if (values.length > 0) {
+                    colorMin = Math.min(...values);
+                    colorMax = Math.max(...values);
+                    // Update the input fields with the auto-detected values
+                    colorMinInput.value = colorMin.toFixed(2);
+                    colorMaxInput.value = colorMax.toFixed(2);
+                } else {
+                    colorMin = 0;
+                    colorMax = 1;
+                }
+            }
+
+            // Create the color scale
+            const colorScale = chroma.scale(['#2c7bb6', '#abd9e9', '#ffffbf', '#fdae61', '#d7191c']).domain([colorMin, colorMax]).mode('lab');
+
+            // Remove previous layer
+            if (geoJsonLayer) {
+                map.removeLayer(geoJsonLayer);
+            }
+
+            // Create new GeoJSON layer with styled points
+            geoJsonLayer = L.geoJSON(currentData, {
+                pointToLayer: function (feature, latlng) {
+                    const value = feature.properties[property];
+                    const color = (value != null) ? colorScale(value).hex() : '#808080'; // Gray for null values
+
+                    return L.circleMarker(latlng, {
+                        radius: 6,
+                        fillColor: color,
+                        color: "#000",
+                        weight: 0.5,
+                        opacity: 1,
+                        fillOpacity: 0.8
+                    });
+                },
+                onEachFeature: function (feature, layer) {
+                    // Create a popup with all properties
+                    let popupContent = '<div class="space-y-1 text-sm">';
+                    for (const key in feature.properties) {
+                        popupContent += `<strong>${key}:</strong> ${feature.properties[key]}<br>`;
+                    }
+                    popupContent += '</div>';
+                    layer.bindPopup(popupContent);
+                }
+            }).addTo(map);
+
+            updateLegend(colorScale, colorMin, colorMax);
+        }
+
+        /**
+         * Updates the color legend on the map.
+         * @param {object} scale - The chroma.js color scale.
+         * @param {number} min - The minimum value of the scale.
+         * @param {number} max - The maximum value of the scale.
+         */
+        function updateLegend(scale, min, max) {
+            const legendContent = document.getElementById('legend-content');
+            if (!scale || isNaN(min) || isNaN(max)) {
+                legendContent.innerHTML = 'No data to display';
+                return;
+            }
+
+            const grades = [
+                min,
+                min + (max - min) * 0.25,
+                min + (max - min) * 0.5,
+                min + (max - min) * 0.75,
+                max
+            ];
+
+            let innerHTML = '';
+            for (let i = 0; i < grades.length; i++) {
+                const from = grades[i];
+                const to = grades[i + 1];
+                innerHTML +=
+                    '<div class="flex items-center">' +
+                    `<i style="background:${scale(from).hex()}"></i> ` +
+                    `${from.toFixed(2)}` + (to ? `&ndash;${to.toFixed(2)}<br>` : '+') +
+                    '</div>';
+            }
+            legendContent.innerHTML = innerHTML;
+        }
+
+        /**
+         * Sets up the initial state and event listeners.
+         */
+        function setupControls() {
+            allDates = generateDateRange(startDate, endDate);
+            dateSlider.min = 0;
+            dateSlider.max = allDates.length - 1;
+            dateSlider.value = 0;
+
+            // Event Listeners
+            dateSlider.addEventListener('input', updateMap);
+            propertySelector.addEventListener('change', () => {
+                // When property changes, re-render with current data
+                renderData(propertySelector.value);
+            });
+            colorMinInput.addEventListener('change', () => renderData(propertySelector.value));
+            colorMaxInput.addEventListener('change', () => renderData(propertySelector.value));
+            autoScaleBtn.addEventListener('click', () => {
+                // Clear inputs and re-render to trigger auto-detection
+                colorMinInput.value = '';
+                colorMaxInput.value = '';
+                renderData(propertySelector.value);
+            });
+        }
+
+        // --- INITIALIZATION ---
+        // Run the setup code once the DOM is fully loaded.
+        document.addEventListener('DOMContentLoaded', () => {
+            initMap();
+            setupControls();
+            updateMap(); // Initial map load
+        });
+
+    </script>
+</body>
+
+</html>

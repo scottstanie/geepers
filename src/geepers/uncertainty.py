@@ -12,7 +12,7 @@ import numpy as np
 import pandas as pd
 from pandera.typing import DataFrame
 
-from .schemas import StationUncertaintySchema
+from .schemas import GPSUncertaintySchema
 
 FloatOrArrayT = TypeVar("FloatOrArrayT", bound=float | pd.Series | np.ndarray)
 
@@ -131,7 +131,7 @@ def get_sigma_los(
 
 
 def get_sigma_los_df(
-    df: DataFrame[StationUncertaintySchema],
+    df: DataFrame[GPSUncertaintySchema],
     los_vector: np.ndarray | pd.Series,
 ) -> pd.Series:
     """Compute line-of-sight (LOS) uncertainty: u^T Σ u.
