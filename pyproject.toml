@@ -24,6 +24,24 @@ classifiers = [
 ]
 license = { file = "LICENSE.txt" }
 
+dependencies = [
+  "pandas[html]",
+  "geopandas",
+  "pyogrio",
+  "xarray",
+  "dask>=2025",
+  "pyproj",
+  "rasterio",
+  "rioxarray",
+  "shapely>=2",
+  "requests",
+  "tqdm",
+  "zarr",
+  "tyro>=0.9.24",
+  "pandera[pandas]",
+]
+
+
 # The version will be written into a version.py upon install, auto-generated
 # see section: setuptools_scm
 # https://setuptools.pypa.io/en/latest/userguide/pyproject_config.html#dynamic-metadata
