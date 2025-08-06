@@ -25,7 +25,8 @@ classifiers = [
 license = { file = "LICENSE.txt" }
 
 dependencies = [
-  "pandas[html]",
+  "pandas",
+  "lxml",
   "geopandas",
   "pyogrio",
   "xarray",
@@ -38,7 +39,7 @@ dependencies = [
   "tqdm",
   "zarr",
   "tyro>=0.9.24",
-  "pandera[pandas]",
+  "pandera",
 ]
 
 
@@ -83,7 +84,7 @@ requests = ">=2.32.4"
 tqdm = ">=4.67.1"
 zarr = "*"
 tyro = ">=0.9.24,<0.10"
-pandera-pandas = "*"
+pandera = "*"
 
 [tool.pixi.tasks]
 check = "pre-commit run -a"
