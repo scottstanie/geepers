@@ -8,7 +8,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-from dask import compute
+import xarray as xr
 from tqdm.auto import tqdm
 from tqdm.dask import TqdmCallback
 
@@ -21,53 +21,85 @@ logger = logging.getLogger("geepers")
 PHASE_TO_METERS = float(SENTINEL_1_WAVELENGTH) / (4.0 * np.pi)
 
 
+def sample_insar(
+    reader: XarrayReader, stations_df: pd.DataFrame, buffer_pixels: int
+) -> xr.DataArray:
+    """Sample InSAR data at station locations with optional spatial buffering.
+
+    Parameters
+    ----------
+    reader : XarrayReader
+        InSAR data reader.
+    stations_df : pd.DataFrame
+        DataFrame with 'lon' and 'lat' columns.
+    buffer_pixels : int
+        Number of pixels to buffer around each station.
+        If >0, samples a window and computes median.
+
+    Returns
+    -------
+    xr.DataArray
+        Array of shape (n_stations, n_times) with InSAR values.
+
+    """
+    lons = stations_df.lon.to_numpy()
+    lats = stations_df.lat.to_numpy()
+
+    with TqdmCallback(
+        desc=f"Sampling {reader.da.name} (buffered by {buffer_pixels} pixels)"
+    ):
+        windows_list = reader.read_window(lons, lats, buffer_pixels)
+        p = [w.median(dim=("x", "y"), skipna=True) for w in windows_list]
+        averaged = xr.concat(p, dim="pixel")
+        a = averaged.compute()
+    return a
+
+
 def process_insar_data(
     *,
     reader: XarrayReader,
     df_gps_stations: pd.DataFrame,
     reader_temporal_coherence: XarrayReader | None = None,
     reader_similarity: XarrayReader | None = None,
+    insar_buffer: int = 0,
 ) -> dict[str, pd.DataFrame]:
     """Sample InSAR rasters at all station locations in one pass.
 
     Parameters
     ----------
-    reader : RasterStackReader
-        *RasterStackReader* opened on the displacement stack.
+    reader : XarrayReader
+        `XarrayReader` opened on the displacement stack.
     df_gps_stations
-        DataFrame indexed by station name with at least ``lon`` and ``lat``
+        DataFrame indexed by station name with at least `lon` and `lat`
         columns (decimal degrees).
     reader_temporal_coherence, reader_similarity
         Optional readers to sample alongside displacement to
         compute temporal coherence and phase similarity.
+    insar_buffer : int
+        Number of pixels to buffer around each GPS station when sampling InSAR
+        data. Uses median averaging, ignoring NaN values, to reduce noise through
+        spatial averaging. Default is 0 (single pixel).
 
     Returns
     -------
     dict[str, pandas.DataFrame]
-        A mapping from station name to a dataframe that contains *los_insar*
-        (in **metres**), *temporal_coherence* and *similarity* columns indexed
+        A mapping from station name to a dataframe that contains `los_insar`
+        (in meters), `temporal_coherence` and `similarity` columns indexed
         by acquisition date.
 
     """
-    lons = df_gps_stations.lon.to_numpy()
-    lats = df_gps_stations.lat.to_numpy()
-
-    # los_insar gets stacks as (n_stations, len(time) ), each row one station
-    with TqdmCallback(desc="Sampling InSAR data locations"):
-        r = compute(reader.read_lon_lat(lons, lats))
-    los_insar = np.stack(r).squeeze()
+    # Sample InSAR data with optional buffering
+    los_insar = sample_insar(reader, df_gps_stations, insar_buffer)
 
     if reader_temporal_coherence is not None:
-        with TqdmCallback(desc="Sampling temporal coherence data locations"):
-            r = compute(reader_temporal_coherence.read_lon_lat(lons, lats))
-        temp_coh = np.stack(r).squeeze()
+        temp_coh = sample_insar(
+            reader_temporal_coherence, df_gps_stations, insar_buffer
+        )
     else:
         temp_coh = None
 
     if reader_similarity is not None:
-        with TqdmCallback(desc="Sampling similarity data locations"):
-            r = compute(reader_similarity.read_lon_lat(lons, lats))
-        similarity = np.stack(r).squeeze()
+        similarity = sample_insar(reader_similarity, df_gps_stations, insar_buffer)
     else:
         similarity = None
 

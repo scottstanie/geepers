@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import logging
+import warnings
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Self
+from typing import TYPE_CHECKING, Literal, Self
 
 import numpy as np
 import pandas as pd
@@ -303,64 +304,90 @@ class XarrayReader:
             objects.
 
         """
-        if self.crs != "EPSG:4326":
-            x, y = self._transformer_from_lonlat.transform(lons, lats)
-        else:
-            x, y = np.asarray(lons), np.asarray(lats)
-
-        xa, ya = np.asarray(x), np.asarray(y)
-        if xa.size != ya.size:
-            msg = "x and y must have the same length"
-            raise ValueError(msg)
-
-        if xa.size == 1:
-            return self.da.sel(x=xa, y=ya, method="nearest")
-
-        return [
-            self.da.sel(x=xx, y=yy, method="nearest")
-            for xx, yy in zip(xa, ya, strict=False)
-        ]
+        return self.read_window(lons, lats, buffer_pixels=0)
 
     @cached_property
     def _transformer_from_lonlat(self):
         return Transformer.from_crs("EPSG:4326", self.crs, always_xy=True)
 
     def read_window(
-        self, lon: float, lat: float, buffer_pixels: int = 0, op=round
-    ) -> np.ndarray:
+        self,
+        lons: float | ArrayLike,
+        lats: float | ArrayLike,
+        buffer_pixels: int = 0,
+        boundary: Literal["nan", "warn", "raise"] = "nan",
+        op=round,
+    ) -> list[xr.DataArray]:
         """Read values in a window around the given longitude and latitude.
 
         Parameters
         ----------
-        lon : float
-            Longitude to read.
-        lat : float
-            Latitude to read.
+        lons : float | ArrayLike
+            Longitudes to read.
+        lats : float | ArrayLike
+            Latitudes to read.
         buffer_pixels : int, optional
             Number of pixels to read around the given longitude and latitude.
             Default is 0.
         op : callable, optional
             Function to apply to the longitude and latitude to get the row and column.
             Default is `round`.
+        boundary : Literal["nan", "warn", "raise"], optional
+            How to handle out-of-bounds coordinates. Default is "nan".
 
         Returns
         -------
-        np.ndarray
+        list[xr.DataArray]
             Values in the window around the given longitude and latitude.
             Dimension of output is equal to `self.ndim`.
 
         """
         if self.crs != "EPSG:4326":
-            x, y = self._transformer_from_lonlat.transform(lon, lat)
+            x, y = self._transformer_from_lonlat.transform(lons, lats)
         else:
-            x, y = lon, lat
-        # Use the inverse transform to get row, col
-        col_float, row_float = ~(self.da.rio.transform()) * (x, y)
-        col, row = op(col_float), op(row_float)
-        x_slice = slice(col - buffer_pixels, col + buffer_pixels + 1)
-        y_slice = slice(row - buffer_pixels, row + buffer_pixels + 1)
-        print(x_slice, y_slice)
-        return self.da.isel(x=x_slice, y=y_slice).values
+            x, y = np.asarray(lons), np.asarray(lats)
+
+        xa, ya = np.atleast_1d(x), np.atleast_1d(y)
+        if xa.size != ya.size:
+            msg = "x and y must have the same length"
+            raise ValueError(msg)
+
+        windows: list[xr.DataArray] = []
+        for xx, yy in zip(xa, ya, strict=True):
+            # Use the inverse transform to get row, col
+            col_float, row_float = ~(self.da.rio.transform()) * (xx, yy)
+            col, row = op(col_float), op(row_float)
+            x_slice = slice(col - buffer_pixels, col + buffer_pixels + 1)
+            y_slice = slice(row - buffer_pixels, row + buffer_pixels + 1)
+            # Check the sizes of the slices
+            # Slice; if it would be empty we'll fabricate a NaN-filled block
+            if (
+                row < 0
+                or col < 0
+                or row >= self.da.shape[-2]
+                or col >= self.da.shape[-1]
+            ):
+                msg = (
+                    f"Coordinates ({xx}, {yy}) are outside raster bounds; "
+                    "returning NaNs."
+                )
+                if boundary == "raise":
+                    raise ValueError(msg)
+                if boundary == "warn":
+                    warnings.warn(msg, stacklevel=2)
+
+                win_shape = 2 * buffer_pixels + 1
+                template = self.da.isel(
+                    x=slice(0, win_shape), y=slice(0, win_shape)
+                ).copy(deep=True)
+                template.data = np.full(template.shape, np.nan)
+                windows.append(template)
+                continue
+
+            # Normal in-bounds case
+            windows.append(self.da.isel(x=x_slice, y=y_slice))
+
+        return windows
 
     @property
     def units(self) -> str:

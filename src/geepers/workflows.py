@@ -39,6 +39,8 @@ def main(
     reference_station: Annotated[str | None, tyro.conf.arg(aliases=["--ref"])] = None,
     temporal_coherence_files: Sequence[str | Path] | None = None,
     similarity_files: Sequence[str | Path] | None = None,
+    insar_buffer: int = 0,
+    gps_time_window: int = 10,
 ) -> None:
     """Compare InSAR time series to GPS observations along the line-of-sight.
 
@@ -75,6 +77,13 @@ def main(
     temporal_coherence_files, similarity_files
         Optional rasters providing per-pixel temporal coherence and phase
         similarity which will be sampled at station locations.
+    insar_buffer
+        Number of pixels to buffer around each GPS station when sampling InSAR
+        data. Uses median averaging, ignoring NaN values, to reduce noise through
+        spatial averaging. Default is 0 (single pixel).
+    gps_time_window
+        Number of days for GPS rolling average window to reduce temporal noise.
+        Default is 30 days.
 
     Notes
     -----
@@ -95,16 +104,30 @@ def main(
             msg = "Must provide either timeseries_files or timeseries_stack"
             raise ValueError(msg)
         insar_reader = XarrayReader.from_file(timeseries_stack, data_var=stack_data_var)
+        reader_temporal_coherence: XarrayReader | None = XarrayReader.from_file(
+            timeseries_stack, data_var="temporal_coherence"
+        )
+        reader_similarity: XarrayReader | None = XarrayReader.from_file(
+            timeseries_stack, data_var="phase_similarity"
+        )
+
     else:
         insar_reader = XarrayReader.from_file_list(timeseries_files, file_date_fmt)
-
+        reader_temporal_coherence = get_quality_reader(
+            temporal_coherence_files, insar_reader.da.time, file_date_fmt
+        )
+        reader_similarity = get_quality_reader(
+            similarity_files, insar_reader.da.time, file_date_fmt
+        )
     logger.info("Created %s", insar_reader)
-    reader_temporal_coherence = get_quality_reader(
-        temporal_coherence_files, insar_reader.da.time, file_date_fmt
-    )
-    reader_similarity = get_quality_reader(
-        similarity_files, insar_reader.da.time, file_date_fmt
-    )
+    if reader_temporal_coherence is not None:
+        logger.info("Created %s", reader_temporal_coherence)
+    else:
+        logger.info("No temporal coherence reader provided.")
+    if reader_similarity is not None:
+        logger.info("Created %s", reader_similarity)
+    else:
+        logger.info("No similarity reader provided.")
 
     # Get GPS stations within image bounds using new API
     source = UnrSource() if gps_source == "unr" else SideshowSource()
@@ -148,19 +171,26 @@ def main(
             continue
 
         enu_vec = np.nan_to_num(
-            los_reader.read_lon_lat(station_row.lon, station_row.lat)
-        )
-        assert enu_vec.shape == (3,)
-        if np.allclose(enu_vec, 0):
-            logger.info(f"{station_row} lies has nodata in LOS raster; skipping.")
+            los_reader.read_window(station_row.lon, station_row.lat, 0)
+        ).squeeze()
+        if enu_vec.size == 0 or np.allclose(enu_vec, 0):
+            logger.info(f"{station_row} lies outside LOS raster bounds; skipping.")
             continue
+        assert enu_vec.shape == (3,)
 
         e, n, u = enu_vec
         df["los_gps"] = df.east * e + df.north * n + df.up * u
         if df["los_gps"].size > 0:
             df["los_gps"] -= np.nanmean(df["los_gps"])  # remove arbitrary offset
+
+        # Apply rolling average if requested
+        if gps_time_window > 0:
+            df["los_gps"] = (
+                df["los_gps"]
+                .rolling(window=gps_time_window, center=True, min_periods=1)
+                .median()
+            )
         # Compute the LOS uncertainty
-        # RuntimeWarning
         with warnings.catch_warnings(action="ignore", category=RuntimeWarning):
             df["sigma_los"] = get_sigma_los_df(df, enu_vec)
 
@@ -174,6 +204,7 @@ def main(
         df_gps_stations=df_gps_stations,
         reader_temporal_coherence=reader_temporal_coherence,
         reader_similarity=reader_similarity,
+        insar_buffer=insar_buffer,
     )
 
     # Merge GPS and InSAR tables per station

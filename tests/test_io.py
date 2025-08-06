@@ -262,12 +262,27 @@ class TestXarrayReader:
             quality_reader.da.coords["time"] == timeseries_reader.da.coords["time"]
         )
 
+    def test_read_window_oob_nan(self, dataarray_2d):
+        reader = XarrayReader(dataarray_2d)
+        out = reader.read_window([-999], [-999], buffer_pixels=1)[0]
+        # Window is 3x3, all NaN
+        assert out.shape == (3, 3)
+        assert np.isnan(out.values).all()
+
+    def test_read_window_mixed_in_and_oob(self, dataarray_2d):
+        reader = XarrayReader(dataarray_2d)
+        lons = [5, -999]
+        lats = [5, -999]
+        wins = reader.read_window(lons, lats, buffer_pixels=0)
+        assert len(wins) == 2
+        assert not np.isnan(wins[0]).all()  # valid point
+        assert np.isnan(wins[1]).all()  # OOB -> NaNs
+
 
 class TestXarrayRealData:
     def test_read_lon_lat(self):
         test_los_enu_file = Path(__file__).parent / "data/hawaii/hawaii_los_enu.tif"
-        expected_los_enu = [-0.6738281, -0.12548828, 0.72753906]
+        expected_los_enu = [-0.674805, -0.12548828, 0.72753906]
         reader = XarrayReader.from_file(test_los_enu_file, units="unitless")
-        sample_point = [-155, 20]
-        los_enu = reader.read_lon_lat(*sample_point).values
+        los_enu = reader.read_lon_lat(-155, 20)[0].values.squeeze()
         assert np.allclose(los_enu, expected_los_enu)
