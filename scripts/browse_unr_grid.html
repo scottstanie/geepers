@@ -4,17 +4,68 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GeoJSON Time Series Viewer</title>
+    <title>UNR Gridded Time Series Viewer</title>
+    
+    <!-- Simple embedded favicon to prevent 404 errors -->
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E🗺️%3C/text%3E%3C/svg%3E">
 
     <!-- Leaflet CSS -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
         integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
 
-    <!-- Tailwind CSS for styling UI elements -->
-    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Font Awesome for icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 
-    <!-- Custom Styles -->
+    <!-- Custom Styles with embedded Tailwind-like utilities -->
     <style>
+        /* Embedded utility classes to replace Tailwind CDN */
+        .hidden { display: none !important; }
+        .flex { display: flex; }
+        .grid { display: grid; }
+        .grid-cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        .gap-1 { gap: 0.25rem; }
+        .gap-2 { gap: 0.5rem; }
+        .gap-6 { gap: 1.5rem; }
+        .space-x-2 > * + * { margin-left: 0.5rem; }
+        .space-y-2 > * + * { margin-top: 0.5rem; }
+        .items-center { align-items: center; }
+        .justify-center { justify-content: center; }
+        .justify-between { justify-content: space-between; }
+        .w-full { width: 100%; }
+        .w-1\/2 { width: 50%; }
+        .mb-2 { margin-bottom: 0.5rem; }
+        .mb-3 { margin-bottom: 0.75rem; }
+        .mb-4 { margin-bottom: 1rem; }
+        .mt-1 { margin-top: 0.25rem; }
+        .mt-2 { margin-top: 0.5rem; }
+        .p-2 { padding: 0.5rem; }
+        .p-3 { padding: 0.75rem; }
+        .rounded { border-radius: 0.375rem; }
+        .rounded-lg { border-radius: 0.5rem; }
+        .border { border-width: 1px; }
+        .text-xs { font-size: 0.75rem; line-height: 1rem; }
+        .text-sm { font-size: 0.875rem; line-height: 1.25rem; }
+        .text-lg { font-size: 1.125rem; line-height: 1.75rem; }
+        .font-bold { font-weight: 700; }
+        .font-medium { font-weight: 500; }
+        .text-gray-500 { color: #6b7280; }
+        .text-gray-600 { color: #4b5563; }
+        .text-gray-700 { color: #374151; }
+        .text-gray-800 { color: #1f2937; }
+        .text-blue-500 { color: #3b82f6; }
+        .text-blue-600 { color: #2563eb; }
+        .text-red-500 { color: #ef4444; }
+        .text-red-600 { color: #dc2626; }
+        .text-red-700 { color: #b91c1c; }
+        .text-green-600 { color: #16a34a; }
+        .text-green-700 { color: #15803d; }
+        .bg-gray-50 { background-color: #f9fafb; }
+        .bg-red-100 { background-color: #fee2e2; }
+        .bg-green-100 { background-color: #dcfce7; }
+        .border-red-200 { border-color: #fecaca; }
+        .border-green-200 { border-color: #bbf7d0; }
+        .transition-transform { transition-property: transform; transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1); transition-duration: 150ms; }
+
         /* Ensure the map container fills the viewport */
         html,
         body {
@@ -22,7 +73,6 @@
             margin: 0;
             padding: 0;
             overflow: hidden;
-            /* Prevent scrollbars */
             font-family: 'Inter', sans-serif;
         }
 
@@ -32,18 +82,99 @@
             background-color: #f0f0f0;
         }
 
-        /* Style for the UI controls panel */
+        /* Enhanced UI controls panel with tabs */
         .controls {
             position: absolute;
             top: 10px;
             right: 10px;
             z-index: 1000;
-            /* Ensure controls are on top of the map */
-            background: rgba(255, 255, 255, 0.9);
-            padding: 1rem;
-            border-radius: 8px;
-            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
-            width: 320px;
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 12px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
+            width: 340px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            max-height: 90vh;
+            overflow: hidden;
+        }
+
+        /* Tab navigation */
+        .tab-navigation {
+            display: flex;
+            background: linear-gradient(135deg, #f8fafc, #e2e8f0);
+            border-radius: 12px 12px 0 0;
+            border-bottom: 1px solid #e2e8f0;
+            margin: 0;
+            padding: 0;
+        }
+
+        .tab-button {
+            flex: 1;
+            padding: 12px 8px;
+            background: none;
+            border: none;
+            cursor: pointer;
+            font-size: 12px;
+            font-weight: 600;
+            color: #64748b;
+            transition: all 0.3s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            border-radius: 8px 8px 0 0;
+            margin: 4px 2px 0 2px;
+        }
+
+        .tab-button:first-child {
+            margin-left: 4px;
+        }
+
+        .tab-button:last-child {
+            margin-right: 4px;
+        }
+
+        .tab-button.active {
+            background: white;
+            color: #3b82f6;
+            box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.1);
+            border-bottom: 2px solid #3b82f6;
+        }
+
+        .tab-button:hover:not(.active) {
+            background: rgba(255, 255, 255, 0.7);
+            color: #475569;
+        }
+
+        /* Tab content */
+        .tab-content {
+            padding: 1.25rem;
+            overflow-y: auto;
+            max-height: calc(90vh - 60px);
+        }
+
+        .tab-panel {
+            display: none;
+        }
+
+        .tab-panel.active {
+            display: block;
+        }
+
+        /* Tab headers */
+        .tab-header {
+            margin-bottom: 1.5rem;
+            padding-bottom: 0.75rem;
+            border-bottom: 1px solid #e2e8f0;
+        }
+
+        .tab-title {
+            font-size: 1.125rem;
+            font-weight: 700;
+            color: #1f2937;
+            display: flex;
+            align-items: center;
+            gap: 8px;
         }
 
         .control-group {
@@ -55,26 +186,34 @@
             margin-bottom: 0.5rem;
             font-weight: 500;
             color: #374151;
+            font-size: 0.875rem;
         }
 
         .control-group input,
         .control-group select {
             width: 100%;
-            padding: 0.5rem;
-            border-radius: 4px;
+            padding: 0.625rem;
+            border-radius: 8px;
             border: 1px solid #D1D5DB;
+            font-size: 0.875rem;
+            transition: border-color 0.3s, box-shadow 0.3s;
+        }
+
+        .control-group input:focus,
+        .control-group select:focus {
+            outline: none;
+            border-color: #3B82F6;
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
         }
 
         .date-slider {
             -webkit-appearance: none;
             width: 100%;
             height: 8px;
-            background: #d3d3d3;
+            background: #e2e8f0;
             outline: none;
-            opacity: 0.7;
-            -webkit-transition: .2s;
-            transition: opacity .2s;
             border-radius: 5px;
+            transition: opacity 0.2s;
         }
 
         .date-slider::-webkit-slider-thumb {
@@ -82,80 +221,868 @@
             appearance: none;
             width: 20px;
             height: 20px;
-            background: #3B82F6;
+            background: linear-gradient(135deg, #3B82F6, #1D4ED8);
             cursor: pointer;
             border-radius: 50%;
+            box-shadow: 0 2px 8px rgba(59, 130, 246, 0.3);
         }
 
         .date-slider::-moz-range-thumb {
             width: 20px;
             height: 20px;
-            background: #3B82F6;
+            background: linear-gradient(135deg, #3B82F6, #1D4ED8);
             cursor: pointer;
             border-radius: 50%;
+            border: none;
+            box-shadow: 0 2px 8px rgba(59, 130, 246, 0.3);
         }
 
-        /* Color Legend */
-        .legend {
-            line-height: 18px;
-            color: #555;
+        /* Enhanced Color Legend with Date Display */
+        .leaflet-control-colorlegend {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 12px;
+            padding: 16px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            font-family: 'Inter', sans-serif;
+            min-width: 220px;
         }
 
-        .legend i {
-            width: 18px;
-            height: 18px;
-            float: left;
-            margin-right: 8px;
+        .legend-date-display {
+            background: linear-gradient(135deg, #3B82F6, #1E40AF);
+            color: white;
+            padding: 12px;
+            margin: -16px -16px 16px -16px;
+            border-radius: 12px 12px 0 0;
+            text-align: center;
+            font-weight: 700;
+            font-size: 18px;
+            letter-spacing: 0.5px;
+            box-shadow: 0 2px 8px rgba(59, 130, 246, 0.3);
+        }
+
+        .legend-date-display .date-label {
+            font-size: 11px;
             opacity: 0.9;
+            font-weight: 500;
+            margin-bottom: 2px;
+        }
+
+        .legend-header {
+            font-weight: 600;
+            font-size: 14px;
+            color: #1f2937;
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .legend-property {
+            font-size: 11px;
+            color: #6b7280;
+            margin-bottom: 12px;
+            font-weight: 500;
+        }
+
+        .legend-gradient {
+            height: 120px;
+            width: 20px;
+            border-radius: 4px;
+            border: 1px solid #e5e7eb;
+            position: relative;
+            margin-right: 12px;
+            float: left;
+        }
+
+        .legend-labels {
+            height: 120px;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            font-size: 10px;
+            color: #374151;
+            font-weight: 500;
+        }
+
+        .legend-stats {
+            margin-top: 12px;
+            padding-top: 12px;
+            border-top: 1px solid #e5e7eb;
+            font-size: 10px;
+            color: #6b7280;
+        }
+
+        .legend-stats div {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 2px;
+        }
+
+        /* Enhanced Scale Bar */
+        .leaflet-control-scale {
+            background: rgba(255, 255, 255, 0.95) !important;
+            backdrop-filter: blur(10px);
+            border-radius: 8px !important;
+            padding: 8px 12px !important;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15) !important;
+            border: 1px solid rgba(255, 255, 255, 0.2) !important;
+            font-family: 'Inter', sans-serif !important;
+        }
+
+        .leaflet-control-scale-line {
+            border: 2px solid #374151 !important;
+            border-top: none !important;
+            color: #374151 !important;
+            font-weight: 600 !important;
+            line-height: 1.2 !important;
+            padding: 2px 5px 1px !important;
+            background: rgba(255, 255, 255, 0.9) !important;
+            margin: 2px 0 !important;
+            border-radius: 0 0 4px 4px !important;
+            font-size: 11px !important;
+        }
+
+        /* Coordinate Display */
+        .leaflet-control-coordinates {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 8px;
+            padding: 6px 10px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            font-family: 'Inter', sans-serif;
+            font-size: 11px;
+            font-weight: 500;
+            color: #374151;
+        }
+
+        /* Zoom Indicator */
+        .leaflet-control-zoom-indicator {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 8px;
+            padding: 6px 10px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            font-family: 'Inter', sans-serif;
+            font-size: 11px;
+            font-weight: 600;
+            color: #3B82F6;
+        }
+
+        /* Button Styles */
+        .btn {
+            padding: 0.625rem 1rem;
+            border-radius: 8px;
+            font-weight: 600;
+            font-size: 0.875rem;
+            border: none;
+            cursor: pointer;
+            transition: all 0.3s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #3B82F6, #1D4ED8);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: linear-gradient(135deg, #2563EB, #1E40AF);
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+        }
+
+        .btn-secondary {
+            background: #F3F4F6;
+            color: #374151;
+            border: 1px solid #D1D5DB;
+        }
+
+        .btn-secondary:hover {
+            background: #E5E7EB;
+            transform: translateY(-1px);
+        }
+
+        .btn-success {
+            background: linear-gradient(135deg, #10B981, #059669);
+            color: white;
+        }
+
+        .btn-success:hover {
+            background: linear-gradient(135deg, #059669, #047857);
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+        }
+
+        .btn-danger {
+            background: linear-gradient(135deg, #EF4444, #DC2626);
+            color: white;
+        }
+
+        .btn-danger:hover {
+            background: linear-gradient(135deg, #DC2626, #B91C1C);
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3);
+        }
+
+        /* Message Box */
+        .message-box {
+            border-radius: 8px;
+            padding: 0.75rem;
+            margin-top: 1rem;
+            font-size: 0.875rem;
+            animation: slideIn 0.3s ease-out;
+        }
+
+        @keyframes slideIn {
+            from { opacity: 0; transform: translateY(-10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* Playback Controls */
+        .playback-controls {
+            display: flex;
+            gap: 0.5rem;
+            margin-top: 0.75rem;
+        }
+
+        .playback-btn {
+            flex: 1;
+            padding: 0.5rem;
+            background: #F8FAFC;
+            border: 1px solid #CBD5E1;
+            border-radius: 6px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #475569;
+            font-weight: 500;
+            transition: all 0.3s;
+            font-size: 0.875rem;
+        }
+
+        .playback-btn:hover {
+            background: #E2E8F0;
+            color: #334155;
+        }
+
+        .playback-btn.active {
+            background: #3B82F6;
+            color: white;
+            border-color: #3B82F6;
+        }
+
+        /* Time series chart styles */
+        .timeseries-chart {
+            width: 100%;
+            height: 150px;
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 6px;
+            margin: 8px 0;
+            position: relative;
+        }
+
+        /* Time series chart tooltip styles */
+        .chart-tooltip {
+            position: absolute;
+            background: rgba(0, 0, 0, 0.9);
+            color: white;
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 11px;
+            font-weight: 500;
+            pointer-events: none;
+            z-index: 10000;
+            opacity: 0;
+            transition: opacity 0.2s;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+            white-space: nowrap;
+        }
+
+        .chart-tooltip.visible {
+            opacity: 1;
+        }
+
+        .chart-tooltip::after {
+            content: '';
+            position: absolute;
+            top: 100%;
+            left: 50%;
+            margin-left: -5px;
+            border-width: 5px;
+            border-style: solid;
+            border-color: rgba(0, 0, 0, 0.9) transparent transparent transparent;
+        }
+
+        .chart-container {
+            position: relative;
+            width: 100%;
+            height: 100%;
+        }
+
+        .loading-chart {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 150px;
+            color: #6b7280;
+            font-size: 12px;
+        }
+
+        .chart-error {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 150px;
+            color: #dc2626;
+            font-size: 12px;
+        }
+
+        /* Loading Animation */
+        .loading {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border: 2px solid #f3f3f3;
+            border-top: 2px solid #3B82F6;
             border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        /* Custom popup styles */
+        .custom-popup .leaflet-popup-content-wrapper {
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+        }
+
+        .custom-popup .leaflet-popup-content {
+            margin: 12px 16px;
+            line-height: 1.4;
+        }
+
+        .custom-popup .leaflet-popup-tip {
+            background: white;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+
+        /* Collapsible sections */
+        .collapsible-header {
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0.5rem;
+            margin: -0.5rem -0.5rem 0.5rem -0.5rem;
+            border-radius: 6px;
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            transition: all 0.3s;
+        }
+
+        .collapsible-header:hover {
+            background: #f1f5f9;
+        }
+
+        .collapsible-content {
+            transition: all 0.3s ease;
+        }
+
+        .collapsible-content.collapsed {
+            display: none;
+        }
+
+        /* Recording status animation */
+        .animate-pulse {
+            animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% {
+                opacity: 1;
+            }
+            50% {
+                opacity: .5;
+            }
+        }
+
+        /* Performance indicator */
+        .performance-indicator {
+            position: fixed;
+            top: 10px;
+            left: 10px;
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-family: monospace;
+            z-index: 10000;
         }
     </style>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 </head>
 
 <body>
+    <!-- Performance indicator (can be hidden in production) -->
+    <div id="performance-indicator" class="performance-indicator hidden">
+        Cache: <span id="cache-status">0</span> | 
+        Load: <span id="load-time">0ms</span> |
+        Render: <span id="render-time">0ms</span>
+    </div>
 
     <!-- The container for the map -->
     <div id="map"></div>
 
-    <!-- The UI controls panel -->
+    <!-- Enhanced UI controls panel with tabs -->
     <div class="controls">
-        <h2 class="text-xl font-bold mb-4 text-gray-800">Map Controls</h2>
-
-        <!-- Date Slider -->
-        <div class="control-group">
-            <label for="date-slider" id="date-label">Date:</label>
-            <input type="range" id="date-slider" class="date-slider">
+        <!-- Tab Navigation -->
+        <div class="tab-navigation">
+            <button class="tab-button active" data-tab="main">
+                <i class="fas fa-map"></i>
+                <span>Map</span>
+            </button>
+            <button class="tab-button" data-tab="performance">
+                <i class="fas fa-tachometer-alt"></i>
+                <span>Performance</span>
+            </button>
+            <button class="tab-button" data-tab="export">
+                <i class="fas fa-video"></i>
+                <span>Export</span>
+            </button>
         </div>
 
-        <!-- Property Dropdown -->
-        <div class="control-group">
-            <label for="property-selector">Color by Property:</label>
-            <select id="property-selector">
-                <option value="east" selected>East</option>
-                <option value="north">North</option>
-                <option value="up">Up</option>
-                <option value="sigma_east" selected>Sigma East</option>
-                <option value="sigma_north">Sigma North</option>
-                <option value="sigma_up">Sigma Up</option>
-            </select>
-        </div>
+        <!-- Tab Content -->
+        <div class="tab-content">
+            <!-- Main Controls Tab -->
+            <div class="tab-panel active" id="main-tab">
+                <div class="tab-header">
+                    <div class="tab-title">
+                        <i class="fas fa-map text-blue-500"></i>
+                        Map Controls
+                    </div>
+                </div>
 
-        <!-- Color Scale Limits -->
-        <div class="control-group">
-            <label>Color Scale Range:</label>
-            <div class="flex space-x-2">
-                <input type="number" id="color-min" placeholder="Min" class="w-1/2">
-                <input type="number" id="color-max" placeholder="Max" class="w-1/2">
+                <!-- Date Slider with Playback -->
+                <div class="control-group">
+                    <label for="date-slider" id="date-label" class="flex items-center gap-2">
+                        <i class="fas fa-calendar text-blue-500"></i>
+                        Date: <span id="loading-indicator" class="loading hidden"></span>
+                    </label>
+                    <input type="range" id="date-slider" class="date-slider">
+                    
+                    <div class="playback-controls">
+                        <button id="play-btn" class="playback-btn" title="Play/Pause">
+                            <i class="fas fa-play"></i>
+                        </button>
+                        <button id="prev-btn" class="playback-btn" title="Previous">
+                            <i class="fas fa-step-backward"></i>
+                        </button>
+                        <button id="next-btn" class="playback-btn" title="Next">
+                            <i class="fas fa-step-forward"></i>
+                        </button>
+                        <button id="reset-btn" class="playback-btn" title="Reset to Start">
+                            <i class="fas fa-refresh"></i>
+                        </button>
+                    </div>
+                    
+                    <div class="mt-2">
+                        <label class="text-xs text-gray-600">Playback Speed:</label>
+                        <select id="speed-selector" class="text-xs mt-1">
+                            <option value="2000">Slow (2s)</option>
+                            <option value="1000" selected>Normal (1s)</option>
+                            <option value="500">Fast (0.5s)</option>
+                            <option value="200">Very Fast (0.2s)</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Basemap Selection -->
+                <div class="control-group">
+                    <label for="basemap-selector" class="flex items-center gap-2">
+                        <i class="fas fa-globe text-blue-500"></i>
+                        Basemap:
+                    </label>
+                    <select id="basemap-selector">
+                        <option value="osm" selected>OpenStreetMap</option>
+                        <option value="cartodb-positron">CartoDB Positron</option>
+                        <option value="cartodb-dark">CartoDB Dark</option>
+                        <option value="esri-satellite">Esri Satellite</option>
+                        <option value="esri-street">Esri Street Map</option>
+                        <option value="stamen-terrain">Stamen Terrain</option>
+                        <option value="stamen-toner">Stamen Toner</option>
+                    </select>
+                </div>
+
+                <!-- Color Scheme Selection -->
+                <div class="control-group">
+                    <label for="color-scheme-selector" class="flex items-center gap-2">
+                        <i class="fas fa-palette text-blue-500"></i>
+                        Color Scheme:
+                    </label>
+                    <select id="color-scheme-selector">
+                        <option value="default" selected>Default (Blue-Red)</option>
+                        <option value="viridis">Viridis</option>
+                        <option value="plasma">Plasma</option>
+                        <option value="inferno">Inferno</option>
+                        <option value="turbo">Turbo</option>
+                        <option value="rdylbu">RdYlBu</option>
+                        <option value="spectral">Spectral</option>
+                        <option value="coolwarm">Cool-Warm</option>
+                        <option value="greens">Greens</option>
+                        <option value="oranges">Oranges</option>
+                    </select>
+                    
+                    <div class="mt-2">
+                        <label class="flex items-center gap-2 text-xs">
+                            <input type="checkbox" id="invert-colors" class="rounded">
+                            <i class="fas fa-exchange-alt text-blue-500"></i>
+                            Invert color scheme
+                        </label>
+                    </div>
+                </div>
+
+                <!-- Property Dropdown -->
+                <div class="control-group">
+                    <label for="property-selector" class="flex items-center gap-2">
+                        <i class="fas fa-chart-line text-blue-500"></i>
+                        Color by Property:
+                    </label>
+                    <select id="property-selector">
+                        <option value="east">East</option>
+                        <option value="north">North</option>
+                        <option value="up">Up</option>
+                        <option value="sigma_east" selected>Sigma East</option>
+                        <option value="sigma_north">Sigma North</option>
+                        <option value="sigma_up">Sigma Up</option>
+                    </select>
+                </div>
+
+                <!-- Color Scale Limits -->
+                <div class="control-group">
+                    <div class="collapsible-header" onclick="toggleCollapsible('scale-controls')">
+                        <label class="flex items-center gap-2 mb-0">
+                            <i class="fas fa-adjust text-blue-500"></i>
+                            Color Scale Range
+                        </label>
+                        <i class="fas fa-chevron-down transition-transform" id="scale-controls-icon"></i>
+                    </div>
+                    <div class="collapsible-content" id="scale-controls">
+                        <div class="flex space-x-2 mt-2">
+                            <input type="number" id="color-min" placeholder="Min" class="w-1/2" step="any">
+                            <input type="number" id="color-max" placeholder="Max" class="w-1/2" step="any">
+                        </div>
+                        <button id="auto-scale-btn" class="btn btn-secondary mt-2 w-full">
+                            <i class="fas fa-magic"></i>
+                            Auto-detect Scale
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Data Summary -->
+                <div class="control-group">
+                    <div class="collapsible-header" onclick="toggleCollapsible('data-summary-section')">
+                        <label class="flex items-center gap-2 mb-0">
+                            <i class="fas fa-chart-bar text-blue-500"></i>
+                            Data Summary
+                        </label>
+                        <i class="fas fa-chevron-down transition-transform" id="data-summary-section-icon"></i>
+                    </div>
+                    <div class="collapsible-content" id="data-summary-section">
+                        <div id="data-summary" class="text-xs bg-gray-50 p-2 rounded border mt-2">
+                            <div class="grid grid-cols-2 gap-1">
+                                <div>Visible: <span id="summary-points">-</span></div>
+                                <div>Valid: <span id="summary-valid">-</span></div>
+                                <div>Min: <span id="summary-min">-</span></div>
+                                <div>Max: <span id="summary-max">-</span></div>
+                            </div>
+                            <div class="text-xs text-gray-500 mt-1">
+                                Statistics for current view extent
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
-            <button id="auto-scale-btn"
-                class="mt-2 w-full bg-gray-200 hover:bg-gray-300 text-gray-700 font-semibold py-2 px-4 rounded-md text-sm">Auto-detect
-                Scale</button>
+
+            <!-- Performance Settings Tab -->
+            <div class="tab-panel" id="performance-tab">
+                <div class="tab-header">
+                    <div class="tab-title">
+                        <i class="fas fa-tachometer-alt text-blue-500"></i>
+                        Performance Settings
+                    </div>
+                </div>
+
+                <div class="control-group">
+                    <label class="flex items-center gap-2 text-sm font-medium">
+                        <i class="fas fa-database text-blue-500"></i>
+                        Data Caching
+                    </label>
+                    <div class="space-y-2 mt-2">
+                        <label class="flex items-center gap-2 text-xs">
+                            <input type="checkbox" id="enable-caching" class="rounded" checked>
+                            Enable data caching for faster loading
+                        </label>
+                        <div class="text-xs text-gray-500">
+                            Max cache size: <span id="cache-size">50</span> files
+                            <input type="range" id="cache-size-slider" min="10" max="200" value="50" class="w-full mt-1">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="control-group">
+                    <label class="flex items-center gap-2 text-sm font-medium">
+                        <i class="fas fa-eye text-blue-500"></i>
+                        Rendering Optimization
+                    </label>
+                    <div class="space-y-2 mt-2">
+                        <label class="flex items-center gap-2 text-xs">
+                            <input type="checkbox" id="enable-culling" class="rounded" checked>
+                            Viewport culling (only render visible points)
+                        </label>
+                    </div>
+                </div>
+
+                <div class="control-group">
+                    <label class="flex items-center gap-2 text-sm font-medium">
+                        <i class="fas fa-chart-line text-blue-500"></i>
+                        Time Series Charts
+                    </label>
+                    <div class="space-y-2 mt-2">
+                        <label class="flex items-center gap-2 text-xs">
+                            <i class="fas fa-sampling text-blue-500"></i>
+                            Time series sampling mode:
+                        </label>
+                        <select id="timeseries-sampling" class="text-xs mt-1">
+                            <option value="smart" selected>Smart sampling (~30 points)</option>
+                            <option value="weekly">Weekly sampling</option>
+                            <option value="monthly">Monthly sampling</option>
+                            <option value="all">All available data (slower)</option>
+                        </select>
+                        <div class="text-xs text-gray-500">
+                            Controls data points loaded for popup charts. "All data" may be slow for long time ranges.
+                        </div>
+                    </div>
+                </div>
+
+                <div class="control-group">
+                    <label class="flex items-center gap-2 text-sm font-medium">
+                        <i class="fas fa-chart-line text-blue-500"></i>
+                        Performance Monitoring
+                    </label>
+                    <div class="space-y-2 mt-2">
+                        <label class="flex items-center gap-2 text-xs">
+                            <input type="checkbox" id="show-performance" class="rounded">
+                            Show performance metrics overlay
+                        </label>
+                        <div class="text-xs text-gray-500">
+                            Displays cache status, load times, and render times
+                        </div>
+                    </div>
+                </div>
+
+                <div class="control-group">
+                    <div class="text-xs bg-blue-50 p-3 rounded border border-blue-200">
+                        <div class="font-medium text-blue-800 mb-1">
+                            <i class="fas fa-info-circle"></i>
+                            Performance Tips
+                        </div>
+                        <ul class="text-blue-700 space-y-1">
+                            <li>• Enable caching for smoother playback</li>
+                            <li>• Use viewport culling for large datasets</li>
+                            <li>• Lower cache size if memory is limited</li>
+                            <li>• Use "Smart sampling" for time series unless you need all data points</li>
+                            <li>• "All data" mode provides complete time series but loads slower</li>
+                            <li>• Monitor metrics to optimize settings</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Video Export Tab -->
+            <div class="tab-panel" id="export-tab">
+                <div class="tab-header">
+                    <div class="tab-title">
+                        <i class="fas fa-video text-blue-500"></i>
+                        Map Animation Export
+                    </div>
+                </div>
+
+                <div class="control-group">
+                    <label class="flex items-center gap-2 text-sm font-medium">
+                        <i class="fas fa-calendar-alt text-blue-500"></i>
+                        Date Range
+                    </label>
+                    <div class="grid grid-cols-2 gap-2 mt-2">
+                        <div>
+                            <label class="text-xs text-gray-700 font-medium">Start Date:</label>
+                            <input type="date" id="export-start-date" class="text-xs mt-1" value="2016-01-01">
+                        </div>
+                        <div>
+                            <label class="text-xs text-gray-700 font-medium">End Date:</label>
+                            <input type="date" id="export-end-date" class="text-xs mt-1" value="2025-01-01">
+                        </div>
+                    </div>
+                    <div class="mt-2">
+                        <label class="text-xs text-gray-700 font-medium">Date Step:</label>
+                        <select id="export-date-step" class="text-xs mt-1">
+                            <option value="1">Every Day</option>
+                            <option value="7" selected>Every Week</option>
+                            <option value="30">Every Month</option>
+                            <option value="90">Every 3 Months</option>
+                            <option value="365">Every Year</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="control-group">
+                    <label class="flex items-center gap-2 text-sm font-medium">
+                        <i class="fas fa-cogs text-blue-500"></i>
+                        Video Settings
+                    </label>
+                    <div class="grid grid-cols-2 gap-2 mt-2">
+                        <div>
+                            <label class="text-xs text-gray-700 font-medium">Resolution:</label>
+                            <select id="export-resolution" class="text-xs mt-1">
+                                <option value="1280x720">HD (1280x720)</option>
+                                <option value="1920x1080" selected>Full HD (1920x1080)</option>
+                                <option value="2560x1440">2K (2560x1440)</option>
+                                <option value="3840x2160">4K (3840x2160)</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="text-xs text-gray-700 font-medium">Frame Rate:</label>
+                            <select id="export-framerate" class="text-xs mt-1">
+                                <option value="15">15 FPS</option>
+                                <option value="24">24 FPS</option>
+                                <option value="30" selected>30 FPS</option>
+                                <option value="60">60 FPS</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="mt-2">
+                        <label class="text-xs text-gray-700 font-medium">Frame Duration (seconds per date):</label>
+                        <select id="export-frame-duration" class="text-xs mt-1">
+                            <option value="0.1">0.1s (Very Fast)</option>
+                            <option value="0.25">0.25s (Fast)</option>
+                            <option value="0.5" selected>0.5s (Normal)</option>
+                            <option value="1">1s (Slow)</option>
+                            <option value="2">2s (Very Slow)</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="control-group">
+                    <label class="flex items-center gap-2 text-sm font-medium">
+                        <i class="fas fa-eye text-blue-500"></i>
+                        Map View Options
+                    </label>
+                    <div class="space-y-2 mt-2">
+                        <label class="flex items-center gap-2 text-xs">
+                            <input type="checkbox" id="export-include-legend" class="rounded" checked>
+                            Include color legend in video
+                        </label>
+                        <label class="flex items-center gap-2 text-xs">
+                            <input type="checkbox" id="export-include-date" class="rounded" checked>
+                            Show current date overlay
+                        </label>
+                        <label class="flex items-center gap-2 text-xs">
+                            <input type="checkbox" id="export-include-scale" class="rounded" checked>
+                            Include scale bar
+                        </label>
+                        <label class="flex items-center gap-2 text-xs">
+                            <input type="checkbox" id="export-fixed-extent" class="rounded">
+                            Use current map extent (don't auto-zoom)
+                        </label>
+                    </div>
+                </div>
+
+                <div class="control-group">
+                    <label class="flex items-center gap-2 text-sm font-medium">
+                        <i class="fas fa-download text-blue-500"></i>
+                        Export Controls
+                    </label>
+                    <div class="space-y-2 mt-2">
+                        <div class="text-xs bg-blue-50 p-2 rounded border border-blue-200" id="export-preview">
+                            <div class="font-medium text-blue-800 mb-1">Preview:</div>
+                            <div class="text-blue-700">
+                                <div>Dates: <span id="preview-date-range">-</span></div>
+                                <div>Frames: <span id="preview-frame-count">-</span></div>
+                                <div>Duration: <span id="preview-duration">-</span></div>
+                                <div>File size: ~<span id="preview-file-size">-</span></div>
+                            </div>
+                        </div>
+                        
+                        <button id="export-start-btn" class="btn btn-primary w-full">
+                            <i class="fas fa-play"></i>
+                            Start Map Animation Export
+                        </button>
+                        
+                        <button id="export-stop-btn" class="btn btn-danger w-full hidden">
+                            <i class="fas fa-stop"></i>
+                            Stop Export
+                        </button>
+                        
+                        <button id="export-download-btn" class="btn btn-success w-full hidden">
+                            <i class="fas fa-download"></i>
+                            Download Video
+                        </button>
+                        
+                        <div id="export-progress" class="hidden">
+                            <div class="text-xs text-gray-600 mb-1">
+                                Export Progress: <span id="progress-text">0%</span>
+                            </div>
+                            <div class="w-full bg-gray-200 rounded-full h-2">
+                                <div id="progress-bar" class="bg-blue-600 h-2 rounded-full" style="width: 0%"></div>
+                            </div>
+                            <div class="text-xs text-gray-500 mt-1">
+                                Current: <span id="progress-current-date">-</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="control-group">
+                    <div class="text-xs bg-green-50 p-3 rounded border border-green-200">
+                        <div class="font-medium text-green-800 mb-2">
+                            <i class="fas fa-info-circle"></i>
+                            How Map Animation Export Works
+                        </div>
+                        <div class="text-green-700 space-y-1">
+                            <div><strong>Rendering:</strong> Creates a basic map representation with data points</div>
+                            <div><strong>High Quality:</strong> Records at chosen resolution with smooth animation</div>
+                            <div><strong>Customizable:</strong> Control date range, speed, and visual elements</div>
+                            <div><strong>Professional:</strong> Creates smooth MP4/WebM videos ready for presentations</div>
+                        </div>
+                        <div class="text-xs text-green-600 mt-2 font-medium">
+                            <i class="fas fa-exclamation-circle"></i>
+                            Note: Export captures a simplified map representation rather than full tile imagery due to browser security limitations.
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
-        <div id="message-box" class="hidden p-3 mt-4 text-sm text-red-700 bg-red-100 rounded-lg" role="alert">
-            <span class="font-medium">Error:</span> <span id="message-text"></span>
+
+        <div id="message-box" class="hidden p-3 text-sm text-red-700 bg-red-100 rounded-lg border border-red-200 mt-3" role="alert">
+            <div class="flex items-center gap-2">
+                <i class="fas fa-exclamation-triangle"></i>
+                <span class="font-medium">Error:</span>
+            </div>
+            <div id="message-text" class="mt-1"></div>
         </div>
     </div>
 
@@ -167,38 +1094,1265 @@
 
     <script>
         // --- CONFIGURATION ---
-        // Adjust the start and end dates to match your dataset.
         const startDate = '2016-01-01';
-        const endDate = '2025-01-01'; // Example: first month of 2016
-        const geojsonDirectory = 'geojson_sources'; // The folder where your files are located
+        const endDate = '2025-01-01';
+        const geojsonDirectory = 'geojson_sources';
         // --- END CONFIGURATION ---
+
+        // --- PERFORMANCE OPTIMIZATIONS ---
+        
+        // Data cache with LRU eviction
+        class DataCache {
+            constructor(maxSize = 50) {
+                this.maxSize = maxSize;
+                this.cache = new Map();
+                this.accessOrder = new Map();
+                this.accessCounter = 0;
+            }
+            
+            get(key) {
+                if (this.cache.has(key)) {
+                    this.accessOrder.set(key, ++this.accessCounter);
+                    return this.cache.get(key);
+                }
+                return null;
+            }
+            
+            set(key, value) {
+                if (this.cache.size >= this.maxSize && !this.cache.has(key)) {
+                    this.evictLRU();
+                }
+                this.cache.set(key, value);
+                this.accessOrder.set(key, ++this.accessCounter);
+            }
+            
+            evictLRU() {
+                let lruKey = null;
+                let lruAccess = Infinity;
+                
+                for (const [key, access] of this.accessOrder) {
+                    if (access < lruAccess) {
+                        lruAccess = access;
+                        lruKey = key;
+                    }
+                }
+                
+                if (lruKey) {
+                    this.cache.delete(lruKey);
+                    this.accessOrder.delete(lruKey);
+                }
+            }
+            
+            clear() {
+                this.cache.clear();
+                this.accessOrder.clear();
+                this.accessCounter = 0;
+            }
+            
+            size() {
+                return this.cache.size;
+            }
+        }
+
+        // Debounce function for expensive operations
+        function debounce(func, wait) {
+            let timeout;
+            return function executedFunction(...args) {
+                const later = () => {
+                    clearTimeout(timeout);
+                    func(...args);
+                };
+                clearTimeout(timeout);
+                timeout = setTimeout(later, wait);
+            };
+        }
+
+        // Throttle function for high-frequency events
+        function throttle(func, limit) {
+            let inThrottle;
+            return function(...args) {
+                if (!inThrottle) {
+                    func.apply(this, args);
+                    inThrottle = true;
+                    setTimeout(() => inThrottle = false, limit);
+                }
+            };
+        }
+
+        // RequestAnimationFrame-based scheduler for smooth rendering
+        class RenderScheduler {
+            constructor() {
+                this.pending = false;
+                this.callbacks = [];
+            }
+            
+            schedule(callback) {
+                this.callbacks.push(callback);
+                if (!this.pending) {
+                    this.pending = true;
+                    requestAnimationFrame(() => {
+                        const callbacks = this.callbacks.splice(0);
+                        this.pending = false;
+                        callbacks.forEach(cb => cb());
+                    });
+                }
+            }
+        }
 
         // --- GLOBAL VARIABLES ---
         let map;
         let geoJsonLayer;
-        let legend;
+        let colorLegend;
+        let coordinateDisplay;
+        let zoomIndicator;
         let allDates = [];
-        let currentData; // To store the currently loaded GeoJSON
+        let currentData;
+        let isPlaying = false;
+        let playInterval;
+        let currentScale;
+        let currentBasemap;
+        let basemapLayers = {};
+        
+        // Performance optimization variables
+        let dataCache = new DataCache(50);
+        let renderScheduler = new RenderScheduler();
+        let performanceMetrics = { loadTime: 0, renderTime: 0 };
+        let enableCaching = true;
+        let enableCulling = true;
+        let showPerformance = false;
+        let timeseriesSampling = 'smart'; // 'smart', 'weekly', 'monthly', 'all'
+        
+        // Viewport culling
+        let currentBounds = null;
+        let visibleMarkers = new Set();
+        
+        // Map animation export variables
+        let isExporting = false;
+        let exportCancelled = false;
+        let exportMediaRecorder = null;
+        let exportRecordedChunks = [];
+        let exportCanvas = null;
+        let exportContext = null;
+        let exportStream = null;
 
-        // --- UI ELEMENTS ---
-        const dateSlider = document.getElementById('date-slider');
-        const dateLabel = document.getElementById('date-label');
-        const propertySelector = document.getElementById('property-selector');
-        const colorMinInput = document.getElementById('color-min');
-        const colorMaxInput = document.getElementById('color-max');
-        const autoScaleBtn = document.getElementById('auto-scale-btn');
-        const messageBox = document.getElementById('message-box');
-        const messageText = document.getElementById('message-text');
+        // Pre-calculated color scales cache
+        let colorScaleCache = new Map();
+
+        // UI Elements - will be initialized in initializeUIElements()
+        let dateSlider, dateLabel, loadingIndicator, propertySelector, colorSchemeSelector;
+        let invertColorsCheckbox, basemapSelector, colorMinInput, colorMaxInput, autoScaleBtn;
+        let messageBox, messageText, playBtn, prevBtn, nextBtn, resetBtn, speedSelector;
+        let enableCachingCheckbox, enableCullingCheckbox, showPerformanceCheckbox;
+        let cacheSizeSlider, cacheSizeDisplay, performanceIndicator, timeseriesSamplingSelector;
+        
+        // Map animation export UI elements
+        let exportStartBtn, exportStopBtn, exportDownloadBtn;
+        let exportStartDate, exportEndDate, exportDateStep, exportResolution;
+        let exportFramerate, exportFrameDuration, exportIncludeLegend, exportIncludeDate;
+        let exportIncludeScale, exportFixedExtent, exportProgress, progressBar, progressText;
+        let progressCurrentDate, previewDateRange, previewFrameCount, previewDuration, previewFileSize;
+
+        // --- COLOR SCHEMES ---
+        const colorSchemes = {
+            'default': ['#2c7bb6', '#abd9e9', '#ffffbf', '#fdae61', '#d7191c'],
+            'viridis': ['#440154', '#414287', '#2a788e', '#22a884', '#7ad151', '#fde725'],
+            'plasma': ['#0d0887', '#6a00a8', '#b12a90', '#e16462', '#fca636', '#f0f921'],
+            'inferno': ['#000004', '#420a68', '#932667', '#dd513a', '#fca50a', '#fcffa4'],
+            'turbo': ['#23171b', '#271a28', '#2d1e3e', '#35225a', '#3e2773', '#472d7b', '#4c3480', '#4f3c85', '#51448a', '#524c8e', '#535492', '#535c95', '#536499', '#526c9c', '#51749f', '#4f7ca2', '#4d84a4', '#4a8ca6', '#4794a7', '#439ca8', '#3fa4a8', '#3baca8', '#37b4a7', '#33bca6', '#2fc3a4', '#2ccba2', '#29d29f', '#27d99c', '#26df98', '#26e594', '#28eb8f', '#2cf08a', '#32f584', '#39fa7e', '#41fe77'],
+            'rdylbu': ['#d73027', '#f46d43', '#fdae61', '#fee090', '#ffffbf', '#e0f3f8', '#abd9e9', '#74add1', '#4575b4'],
+            'spectral': ['#d53e4f', '#f46d43', '#fdae61', '#fee08b', '#ffffbf', '#e6f598', '#abdda4', '#66c2a5', '#3288bd'],
+            'coolwarm': ['#3b4cc0', '#6788ee', '#9abbff', '#c9d7f0', '#dddddd', '#f7b799', '#ee8468', '#d8523c', '#b40426'],
+            'greens': ['#f7fcf5', '#e5f5e0', '#c7e9c0', '#a1d99b', '#74c476', '#41ab5d', '#238b45', '#006d2c', '#00441b'],
+            'oranges': ['#fff5eb', '#fee6ce', '#fdd0a2', '#fdae6b', '#fd8d3c', '#f16913', '#d94801', '#a63603', '#7f2704']
+        };
+
+        // --- BASEMAP CONFIGURATIONS ---
+        const basemapConfigs = {
+            'osm': {
+                name: 'OpenStreetMap',
+                url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+            },
+            'cartodb-positron': {
+                name: 'CartoDB Positron',
+                url: 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
+                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
+            },
+            'cartodb-dark': {
+                name: 'CartoDB Dark',
+                url: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
+                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
+            },
+            'esri-satellite': {
+                name: 'Esri World Imagery',
+                url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+                attribution: 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community'
+            },
+            'esri-street': {
+                name: 'Esri World Street Map',
+                url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}',
+                attribution: 'Tiles &copy; Esri &mdash; Source: Esri, DeLorme, NAVTEQ, USGS, Intermap, iPC, NRCAN, Esri Japan, METI, Esri China (Hong Kong), Esri (Thailand), TomTom, 2012'
+            },
+            'stamen-terrain': {
+                name: 'Stamen Terrain',
+                url: 'https://stamen-tiles-{s}.a.ssl.fastly.net/terrain/{z}/{x}/{y}{r}.png',
+                attribution: 'Map tiles by <a href="http://stamen.com">Stamen Design</a>, <a href="http://creativecommons.org/licenses/by/3.0">CC BY 3.0</a> &mdash; Map data &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+            },
+            'stamen-toner': {
+                name: 'Stamen Toner',
+                url: 'https://stamen-tiles-{s}.a.ssl.fastly.net/toner/{z}/{x}/{y}{r}.png',
+                attribution: 'Map tiles by <a href="http://stamen.com">Stamen Design</a>, <a href="http://creativecommons.org/licenses/by/3.0">CC BY 3.0</a> &mdash; Map data &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+            }
+        };
+
+        // --- INITIALIZE UI ELEMENTS ---
+        function initializeUIElements() {
+            console.log('Initializing UI elements...');
+            
+            // Date and playback controls
+            dateSlider = document.getElementById('date-slider');
+            dateLabel = document.getElementById('date-label');
+            loadingIndicator = document.getElementById('loading-indicator');
+            playBtn = document.getElementById('play-btn');
+            prevBtn = document.getElementById('prev-btn');
+            nextBtn = document.getElementById('next-btn');
+            resetBtn = document.getElementById('reset-btn');
+            speedSelector = document.getElementById('speed-selector');
+            
+            // Property and visual controls
+            propertySelector = document.getElementById('property-selector');
+            colorSchemeSelector = document.getElementById('color-scheme-selector');
+            invertColorsCheckbox = document.getElementById('invert-colors');
+            basemapSelector = document.getElementById('basemap-selector');
+            colorMinInput = document.getElementById('color-min');
+            colorMaxInput = document.getElementById('color-max');
+            autoScaleBtn = document.getElementById('auto-scale-btn');
+            
+            // Message system
+            messageBox = document.getElementById('message-box');
+            messageText = document.getElementById('message-text');
+            
+            // Performance controls
+            enableCachingCheckbox = document.getElementById('enable-caching');
+            enableCullingCheckbox = document.getElementById('enable-culling');
+            showPerformanceCheckbox = document.getElementById('show-performance');
+            cacheSizeSlider = document.getElementById('cache-size-slider');
+            cacheSizeDisplay = document.getElementById('cache-size');
+            performanceIndicator = document.getElementById('performance-indicator');
+            timeseriesSamplingSelector = document.getElementById('timeseries-sampling');
+            
+            // Map animation export controls
+            exportStartBtn = document.getElementById('export-start-btn');
+            exportStopBtn = document.getElementById('export-stop-btn');
+            exportDownloadBtn = document.getElementById('export-download-btn');
+            exportStartDate = document.getElementById('export-start-date');
+            exportEndDate = document.getElementById('export-end-date');
+            exportDateStep = document.getElementById('export-date-step');
+            exportResolution = document.getElementById('export-resolution');
+            exportFramerate = document.getElementById('export-framerate');
+            exportFrameDuration = document.getElementById('export-frame-duration');
+            exportIncludeLegend = document.getElementById('export-include-legend');
+            exportIncludeDate = document.getElementById('export-include-date');
+            exportIncludeScale = document.getElementById('export-include-scale');
+            exportFixedExtent = document.getElementById('export-fixed-extent');
+            exportProgress = document.getElementById('export-progress');
+            progressBar = document.getElementById('progress-bar');
+            progressText = document.getElementById('progress-text');
+            progressCurrentDate = document.getElementById('progress-current-date');
+            previewDateRange = document.getElementById('preview-date-range');
+            previewFrameCount = document.getElementById('preview-frame-count');
+            previewDuration = document.getElementById('preview-duration');
+            previewFileSize = document.getElementById('preview-file-size');
+            
+            console.log('UI elements initialized');
+        }
+
+        /**
+         * Tab switching functionality
+         */
+        function switchTab(tabName) {
+            // Remove active class from all tab buttons
+            document.querySelectorAll('.tab-button').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            
+            // Hide all tab panels
+            document.querySelectorAll('.tab-panel').forEach(panel => {
+                panel.classList.remove('active');
+            });
+            
+            // Activate the selected tab button
+            document.querySelector(`[data-tab="${tabName}"]`).classList.add('active');
+            
+            // Show the selected tab panel
+            document.getElementById(`${tabName}-tab`).classList.add('active');
+        }
+
+        /**
+         * Initialize tab functionality
+         */
+        function initializeTabs() {
+            document.querySelectorAll('.tab-button').forEach(button => {
+                button.addEventListener('click', (e) => {
+                    const tabName = e.currentTarget.getAttribute('data-tab');
+                    switchTab(tabName);
+                });
+            });
+        }
+
+        /**
+         * Toggle collapsible sections
+         */
+        function toggleCollapsible(sectionId) {
+            const content = document.getElementById(sectionId);
+            const icon = document.getElementById(sectionId + '-icon');
+            
+            content.classList.toggle('collapsed');
+            icon.style.transform = content.classList.contains('collapsed') ? 'rotate(-90deg)' : 'rotate(0deg)';
+        }
+
+        /**
+         * Update performance metrics display
+         */
+        function updatePerformanceMetrics() {
+            if (showPerformance) {
+                document.getElementById('cache-status').textContent = dataCache.size();
+                document.getElementById('load-time').textContent = performanceMetrics.loadTime + 'ms';
+                document.getElementById('render-time').textContent = performanceMetrics.renderTime + 'ms';
+                performanceIndicator.classList.remove('hidden');
+            } else {
+                performanceIndicator.classList.add('hidden');
+            }
+        }
+
+        /**
+         * Map Animation Export Functions
+         */
+        
+        function updateExportPreview() {
+            const startDate = new Date(exportStartDate.value);
+            const endDate = new Date(exportEndDate.value);
+            const step = parseInt(exportDateStep.value);
+            const frameDuration = parseFloat(exportFrameDuration.value);
+            const fps = parseInt(exportFramerate.value);
+            
+            if (startDate && endDate && endDate > startDate) {
+                const diffTime = Math.abs(endDate - startDate);
+                const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                const frameCount = Math.ceil(diffDays / step);
+                const totalDuration = frameCount * frameDuration;
+                
+                // Estimate file size (rough calculation)
+                const resolution = exportResolution.value;
+                const [width, height] = resolution.split('x').map(Number);
+                const pixelCount = width * height;
+                const bitrate = Math.min(8000, Math.max(1000, pixelCount / 500)); // Adaptive bitrate
+                const fileSizeMB = (totalDuration * bitrate * 1000) / (8 * 1024 * 1024);
+                
+                previewDateRange.textContent = `${startDate.toLocaleDateString()} - ${endDate.toLocaleDateString()}`;
+                previewFrameCount.textContent = frameCount;
+                previewDuration.textContent = `${totalDuration.toFixed(1)}s`;
+                previewFileSize.textContent = `${fileSizeMB.toFixed(1)} MB`;
+            } else {
+                previewDateRange.textContent = '-';
+                previewFrameCount.textContent = '-';
+                previewDuration.textContent = '-';
+                previewFileSize.textContent = '-';
+            }
+        }
+
+        function createExportCanvas() {
+            const resolution = exportResolution.value;
+            const [width, height] = resolution.split('x').map(Number);
+            
+            if (exportCanvas) {
+                exportCanvas.remove();
+            }
+            
+            exportCanvas = document.createElement('canvas');
+            exportCanvas.width = width;
+            exportCanvas.height = height;
+            exportCanvas.style.display = 'none'; // Hide from view
+            document.body.appendChild(exportCanvas); // Add to DOM for stream to work
+            
+            exportContext = exportCanvas.getContext('2d');
+            
+            // Create a stream from the canvas at the specified framerate
+            const frameRate = parseInt(exportFramerate.value);
+            
+            try {
+                exportStream = exportCanvas.captureStream(frameRate);
+                console.log('Canvas stream created with', frameRate, 'fps');
+                console.log('Stream tracks:', exportStream.getVideoTracks().length);
+            } catch (error) {
+                console.error('Failed to create canvas stream:', error);
+                throw error;
+            }
+            
+            return { width, height };
+        }
+
+        function getSupportedVideoMimeType() {
+            // List of MIME types to try, in order of preference
+            const mimeTypes = [
+                'video/webm;codecs=vp9,opus',
+                'video/webm;codecs=vp9',
+                'video/webm;codecs=vp8,opus',
+                'video/webm;codecs=vp8',
+                'video/webm',
+                'video/mp4;codecs=h264,aac',
+                'video/mp4;codecs=h264', 
+                'video/mp4',
+                'video/x-matroska;codecs=avc1',
+                ''
+            ];
+            
+            for (const mimeType of mimeTypes) {
+                if (MediaRecorder.isTypeSupported(mimeType)) {
+                    console.log('Using MIME type:', mimeType);
+                    return mimeType;
+                }
+            }
+            
+            console.warn('No supported video MIME type found');
+            return '';
+        }
+
+        async function captureMapFrame() {
+            if (!exportCanvas || !exportContext) {
+                throw new Error('Export canvas not initialized');
+            }
+            
+            const width = exportCanvas.width;
+            const height = exportCanvas.height;
+            
+            try {
+                // Clear canvas with a visible background
+                exportContext.fillStyle = '#e8f4f8';
+                exportContext.fillRect(0, 0, width, height);
+                
+                // Add a visible test pattern to verify canvas is working
+                exportContext.fillStyle = '#ff0000';
+                exportContext.fillRect(10, 10, 50, 50);
+                
+                // Add frame timestamp for debugging
+                const timestamp = new Date().toISOString();
+                exportContext.fillStyle = '#000000';
+                exportContext.font = 'bold 16px Arial';
+                exportContext.textAlign = 'left';
+                exportContext.fillText(`Frame: ${timestamp}`, 20, 80);
+                
+                // Render the actual map content
+                await renderBasicMapRepresentation(exportContext, width, height);
+                
+                // Add overlays if enabled
+                if (exportIncludeDate.checked) {
+                    await addDateOverlay(exportContext, width, height);
+                }
+                
+                if (exportIncludeLegend.checked) {
+                    await addLegendOverlay(exportContext, width, height);
+                }
+                
+                if (exportIncludeScale.checked) {
+                    await addScaleOverlay(exportContext, width, height);
+                }
+                
+                // Force canvas update and verify content
+                const imageData = exportContext.getImageData(0, 0, width, height);
+                let hasContent = false;
+                for (let i = 0; i < imageData.data.length; i += 4) {
+                    if (imageData.data[i] !== 232 || imageData.data[i+1] !== 244 || imageData.data[i+2] !== 248) {
+                        hasContent = true;
+                        break;
+                    }
+                }
+                
+                if (!hasContent) {
+                    console.warn('Canvas appears to be empty');
+                } else {
+                    console.log('Canvas frame captured successfully');
+                }
+                
+            } catch (error) {
+                console.error('Error capturing map frame:', error);
+                // Create a error frame that's definitely visible
+                exportContext.fillStyle = '#ffcccb';
+                exportContext.fillRect(0, 0, width, height);
+                
+                exportContext.fillStyle = '#8b0000';
+                exportContext.font = 'bold 24px Arial';
+                exportContext.textAlign = 'center';
+                exportContext.fillText('Capture Error', width/2, height/2);
+            }
+        }
+
+        async function renderDOMToCanvas(element, ctx, targetWidth, targetHeight) {
+            // Clear the canvas
+            ctx.fillStyle = '#f0f0f0';
+            ctx.fillRect(0, 0, targetWidth, targetHeight);
+            
+            // Get element dimensions
+            const rect = element.getBoundingClientRect();
+            const scaleX = targetWidth / rect.width;
+            const scaleY = targetHeight / rect.height;
+            
+            // Try to use the newer browser APIs if available
+            if ('getDisplayMedia' in navigator.mediaDevices) {
+                // For now, we'll create a basic representation
+                // In a real implementation, you might use getDisplayMedia with screen capture
+                await renderBasicMapRepresentation(ctx, targetWidth, targetHeight);
+            } else {
+                // Fallback to basic rendering
+                await renderBasicMapRepresentation(ctx, targetWidth, targetHeight);
+            }
+        }
+        async function renderBasicMapRepresentation(ctx, width, height) {
+            if (!map) return;
+            
+            const bounds = map.getBounds();
+            const property = propertySelector.value;
+            const selectedBasemap = basemapSelector.value;
+            
+            // Simple, clean background based on basemap selection
+            drawCleanBackground(ctx, width, height, selectedBasemap);
+            
+            // Draw data points (this is what matters most)
+            if (currentData && currentData.features) {
+                drawDataPoints(ctx, width, height, bounds, property);
+            }
+            
+            // Add minimal geographic reference
+            drawMinimalReference(ctx, width, height, bounds);
+        }
+
+        function drawCleanBackground(ctx, width, height, basemapType) {
+            switch (basemapType) {
+                case 'cartodb-dark':
+                    ctx.fillStyle = '#2c2c2c';
+                    break;
+                case 'esri-satellite':
+                    ctx.fillStyle = '#1a2f1a';
+                    break;
+                case 'stamen-terrain':
+                    ctx.fillStyle = '#f5f5dc';
+                    break;
+                default: // Light themes
+                    ctx.fillStyle = '#f8f9fa';
+                    break;
+            }
+            ctx.fillRect(0, 0, width, height);
+        }
+
+        function drawDataPoints(ctx, width, height, bounds, property) {
+            const pointSize = Math.max(4, Math.min(12, map.getZoom() - 2));
+            
+            currentData.features.forEach(feature => {
+                const [lng, lat] = feature.geometry.coordinates;
+                
+                // Check if point is in current bounds
+                if (lat >= bounds.getSouth() && lat <= bounds.getNorth() &&
+                    lng >= bounds.getWest() && lng <= bounds.getEast()) {
+                    
+                    // Convert lat/lng to canvas coordinates
+                    const x = ((lng - bounds.getWest()) / (bounds.getEast() - bounds.getWest())) * width;
+                    const y = ((bounds.getNorth() - lat) / (bounds.getNorth() - bounds.getSouth())) * height;
+                    
+                    // Get color from current scale
+                    const value = feature.properties[property];
+                    let color = '#808080';
+                    
+                    if (value != null && !isNaN(value) && currentScale) {
+                        try {
+                            color = currentScale(value).hex();
+                        } catch (e) {
+                            color = '#808080';
+                        }
+                    }
+                    
+                    // Draw point with good visibility
+                    ctx.fillStyle = color;
+                    ctx.beginPath();
+                    ctx.arc(x, y, pointSize, 0, 2 * Math.PI);
+                    ctx.fill();
+                    
+                    // Add subtle outline for definition
+                    ctx.strokeStyle = 'rgba(255,255,255,0.6)';
+                    ctx.lineWidth = 1;
+                    ctx.stroke();
+                }
+            });
+        }
+
+        function drawMinimalReference(ctx, width, height, bounds) {
+            // Just draw coordinate bounds text for reference
+            ctx.fillStyle = 'rgba(0,0,0,0.4)';
+            ctx.font = '12px Arial';
+            ctx.textAlign = 'left';
+            
+            // Corner coordinates
+            ctx.fillText(`${bounds.getNorth().toFixed(2)}°N`, 10, 20);
+            ctx.fillText(`${bounds.getWest().toFixed(2)}°W`, 10, height - 10);
+            
+            ctx.textAlign = 'right';
+            ctx.fillText(`${bounds.getEast().toFixed(2)}°E`, width - 10, height - 10);
+            ctx.fillText(`${bounds.getSouth().toFixed(2)}°S`, width - 10, 20);
+        }
+
+        async function addDateOverlay(ctx, width, height) {
+            const dateIndex = parseInt(dateSlider.value);
+            const currentDate = allDates[dateIndex];
+            
+            if (currentDate) {
+                // Format date nicely
+                const dateObj = new Date(currentDate + 'T00:00:00');
+                const formattedDate = dateObj.toLocaleDateString('en-US', {
+                    year: 'numeric',
+                    month: 'long',
+                    day: 'numeric'
+                });
+                
+                // Draw date overlay
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+                ctx.fillRect(20, height - 80, 300, 60);
+                
+                ctx.fillStyle = '#ffffff';
+                ctx.font = 'bold 24px Inter';
+                ctx.textAlign = 'left';
+                ctx.fillText(formattedDate, 30, height - 45);
+            }
+        }
+
+        async function addLegendOverlay(ctx, width, height) {
+            // Draw a legend
+            const legendWidth = 200;
+            const legendHeight = 120;
+            const x = width - legendWidth - 20;
+            const y = 20;
+            
+            // Background
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+            ctx.fillRect(x, y, legendWidth, legendHeight);
+            ctx.strokeStyle = '#cccccc';
+            ctx.strokeRect(x, y, legendWidth, legendHeight);
+            
+            // Title
+            ctx.fillStyle = '#000000';
+            ctx.font = 'bold 14px Inter';
+            ctx.textAlign = 'left';
+            ctx.fillText('Color Scale', x + 10, y + 20);
+            
+            // Property name
+            ctx.font = '12px Inter';
+            ctx.fillText(propertySelector.value.toUpperCase(), x + 10, y + 40);
+            
+            // Gradient bar 
+            if (currentScale) {
+                const gradientHeight = 60;
+                const gradientWidth = 20;
+                const gradientX = x + 10;
+                const gradientY = y + 50;
+                
+                // Draw gradient steps
+                for (let i = 0; i < gradientHeight; i++) {
+                    const ratio = i / gradientHeight;
+                    const colorMin = parseFloat(colorMinInput.value) || -0.03;
+                    const colorMax = parseFloat(colorMaxInput.value) || 0.03;
+                    const value = colorMin + (colorMax - colorMin) * (1 - ratio);
+                    const color = currentScale(value).hex();
+                    
+                    ctx.fillStyle = color;
+                    ctx.fillRect(gradientX, gradientY + i, gradientWidth, 1);
+                }
+                
+                // Labels
+                ctx.fillStyle = '#000000';
+                ctx.font = '10px Inter';
+                ctx.textAlign = 'left';
+                const colorMin = parseFloat(colorMinInput.value) || -0.03;
+                const colorMax = parseFloat(colorMaxInput.value) || 0.03;
+                ctx.fillText(colorMax.toFixed(3), gradientX + gradientWidth + 5, gradientY + 5);
+                ctx.fillText(colorMin.toFixed(3), gradientX + gradientWidth + 5, gradientY + gradientHeight);
+            }
+        }
+
+        async function addScaleOverlay(ctx, width, height) {
+            // Draw scale bar
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+            ctx.fillRect(20, height - 150, 150, 40);
+            ctx.strokeStyle = '#000000';
+            ctx.strokeRect(20, height - 150, 150, 40);
+            
+            // Scale line
+            ctx.strokeStyle = '#000000';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(30, height - 120);
+            ctx.lineTo(130, height - 120);
+            ctx.stroke();
+            
+            // Scale text 
+            ctx.fillStyle = '#000000';
+            ctx.font = '12px Inter';
+            ctx.textAlign = 'center';
+            ctx.fillText('100 km', 80, height - 125);
+        }
+
+        async function startMapAnimationExport() {
+            if (isExporting) return;
+            
+            try {
+                isExporting = true;
+                exportCancelled = false;
+                
+                // Show progress UI
+                exportStartBtn.classList.add('hidden');
+                exportStopBtn.classList.remove('hidden');
+                exportProgress.classList.remove('hidden');
+                exportDownloadBtn.classList.add('hidden');
+                
+                // Create export canvas and media recorder
+                createExportCanvas();
+                
+                const options = {
+                    mimeType: 'video/webm;codecs=vp9',
+                    videoBitsPerSecond: 2000000
+                };
+                
+                if (!MediaRecorder.isTypeSupported(options.mimeType)) {
+                    options.mimeType = 'video/webm;codecs=vp8';
+                    if (!MediaRecorder.isTypeSupported(options.mimeType)) {
+                        options.mimeType = 'video/webm';
+                    }
+                }
+                
+                exportRecordedChunks = [];
+                exportMediaRecorder = new MediaRecorder(exportStream, options);
+                
+                exportMediaRecorder.ondataavailable = (event) => {
+                    if (event.data.size > 0) {
+                        exportRecordedChunks.push(event.data);
+                    }
+                };
+                
+                exportMediaRecorder.onstop = () => {
+                    if (!exportCancelled) {
+                        const blob = new Blob(exportRecordedChunks, { type: 'video/webm' });
+                        const url = URL.createObjectURL(blob);
+                        
+                        exportDownloadBtn.classList.remove('hidden');
+                        exportDownloadBtn.onclick = () => downloadExportedVideo(url, blob);
+                        
+                        showMessage('Map animation export completed successfully!', 'success');
+                    }
+                    
+                    // Reset UI
+                    exportStartBtn.classList.remove('hidden');
+                    exportStopBtn.classList.add('hidden');
+                    exportProgress.classList.add('hidden');
+                    isExporting = false;
+                };
+                
+                // Start recording
+                exportMediaRecorder.start();
+                
+                // Generate animation frames
+                await generateAnimationFrames();
+                
+                // Stop recording
+                if (!exportCancelled) {
+                    exportMediaRecorder.stop();
+                }
+                
+            } catch (error) {
+                console.error('Export error:', error);
+                showMessage('Failed to export map animation: ' + error.message, 'error');
+                stopMapAnimationExport();
+            }
+        }
+
+        async function generateAnimationFrames() {
+            const startDate = new Date(exportStartDate.value);
+            const endDate = new Date(exportEndDate.value);
+            const step = parseInt(exportDateStep.value);
+            const frameDuration = parseFloat(exportFrameDuration.value) * 1000;
+            
+            const dates = [];
+            const currentDate = new Date(startDate);
+            
+            // Generate date list
+            while (currentDate <= endDate) {
+                dates.push(currentDate.toISOString().split('T')[0]);
+                currentDate.setDate(currentDate.getDate() + step);
+            }
+            
+            console.log(`Generating ${dates.length} frames`);
+            
+            // Store original settings
+            const originalPaused = isPlaying;
+            if (isPlaying) pausePlayback();
+            
+            // Render each frame
+            for (let i = 0; i < dates.length && !exportCancelled; i++) {
+                const date = dates[i];
+                const progress = ((i + 1) / dates.length) * 100;
+                
+                console.log(`Processing frame ${i + 1}/${dates.length}: ${date}`);
+                
+                // Update progress
+                progressBar.style.width = progress + '%';
+                progressText.textContent = Math.round(progress) + '%';
+                progressCurrentDate.textContent = date;
+                
+                // Find date index and update map
+                const dateIndex = allDates.indexOf(date);
+                if (dateIndex >= 0) {
+                    dateSlider.value = dateIndex;
+                    await updateMap();
+                    
+                    // Wait for map to render
+                    await new Promise(resolve => setTimeout(resolve, 200));
+                    
+                    // Capture frame using requestAnimationFrame for better timing
+                    await new Promise(resolve => {
+                        requestAnimationFrame(async () => {
+                            await captureMapFrame();
+                            resolve();
+                        });
+                    });
+                    
+                    // Wait between frames - important for MediaRecorder
+                    await new Promise(resolve => setTimeout(resolve, Math.max(100, frameDuration)));
+                }
+            }
+            
+            console.log('Frame generation complete');
+            
+            // Restore original playback state
+            if (originalPaused) startPlayback();
+        }
+
+        function stopMapAnimationExport() {
+            exportCancelled = true;
+            
+            if (exportMediaRecorder && exportMediaRecorder.state === 'recording') {
+                exportMediaRecorder.stop();
+            }
+            
+            exportStartBtn.classList.remove('hidden');
+            exportStopBtn.classList.add('hidden');
+            exportProgress.classList.add('hidden');
+            exportDownloadBtn.classList.add('hidden');
+            
+            isExporting = false;
+            showMessage('Map animation export cancelled.', 'error');
+        }
+
+        function downloadExportedVideo(url, blob) {
+            const now = new Date();
+            const timestamp = now.toISOString().slice(0, 19).replace(/:/g, '-');
+            const resolution = exportResolution.value;
+            const property = propertySelector.value;
+            const filename = `map-animation-${property}-${resolution}-${timestamp}.webm`;
+            
+            const fileSizeMB = (blob.size / 1024 / 1024).toFixed(2);
+            
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            
+            setTimeout(() => {
+                URL.revokeObjectURL(url);
+            }, 1000);
+            
+            exportDownloadBtn.classList.add('hidden');
+            showMessage(`Map animation saved as "${filename}" (${fileSizeMB} MB)`, 'success');
+        }
+
+        /**
+         * Data loading with caching and parallel requests
+         */
+        async function loadGeoJSONData(date) {
+            const startTime = performance.now();
+            
+            // Check cache first
+            if (enableCaching) {
+                const cached = dataCache.get(date);
+                if (cached) {
+                    performanceMetrics.loadTime = Math.round(performance.now() - startTime);
+                    updatePerformanceMetrics();
+                    return cached;
+                }
+            }
+            
+            try {
+                const response = await fetch(`${geojsonDirectory}/${date}.geojson`);
+                if (!response.ok) {
+                    throw new Error(`File not found: ${date}.geojson (Status: ${response.status})`);
+                }
+                
+                const data = await response.json();
+                
+                // Cache the data
+                if (enableCaching) {
+                    dataCache.set(date, data);
+                }
+                
+                performanceMetrics.loadTime = Math.round(performance.now() - startTime);
+                updatePerformanceMetrics();
+                return data;
+                
+            } catch (error) {
+                performanceMetrics.loadTime = Math.round(performance.now() - startTime);
+                updatePerformanceMetrics();
+                throw error;
+            }
+        }
+
+        /**
+         * Preload adjacent dates for smoother playback
+         */
+        async function preloadAdjacentDates(currentIndex) {
+            if (!enableCaching) return;
+            
+            const preloadPromises = [];
+            
+            // Preload next 3 and previous 3 dates
+            for (let i = -3; i <= 3; i++) {
+                const index = currentIndex + i;
+                if (index >= 0 && index < allDates.length && index !== currentIndex) {
+                    const date = allDates[index];
+                    if (!dataCache.get(date)) {
+                        preloadPromises.push(
+                            loadGeoJSONData(date).catch(() => {}) // Ignore errors for preloading
+                        );
+                    }
+                }
+            }
+            
+            // Execute preloads in parallel but don't wait for them
+            if (preloadPromises.length > 0) {
+                Promise.all(preloadPromises).catch(() => {}); // Background preloading
+            }
+        }
+
+        /**
+         * Time series data generation with configurable sampling
+         */
+        async function generateTimeSeriesData(coordinates, property) {
+            const lat = coordinates[1];
+            const lng = coordinates[0];
+            const tolerance = 0.0001;
+            
+            const timeSeriesData = [];
+            
+            // Determine sampling strategy based on setting
+            let indices = [];
+            const totalDays = allDates.length;
+            
+            switch (timeseriesSampling) {
+                case 'all':
+                    // Load all available data points
+                    indices = Array.from({ length: totalDays }, (_, i) => i);
+                    break;
+                    
+                case 'weekly':
+                    // Sample weekly (every 7 days)
+                    for (let i = 0; i < totalDays; i += 7) {
+                        indices.push(i);
+                    }
+                    break;
+                    
+                case 'monthly':
+                    // Sample monthly (every 30 days)
+                    for (let i = 0; i < totalDays; i += 30) {
+                        indices.push(i);
+                    }
+                    break;
+                    
+                case 'smart':
+                default:
+                    // Smart sampling: use more points for shorter time ranges, fewer for longer
+                    const maxPoints = Math.min(30, totalDays);
+                    const step = Math.max(1, Math.floor(totalDays / maxPoints));
+                    for (let i = 0; i < totalDays; i += step) {
+                        indices.push(i);
+                    }
+                    break;
+            }
+            
+            // Parallel loading with batch size (adjust batch size based on sampling mode)
+            const batchSize = timeseriesSampling === 'all' ? 3 : 8; // Smaller batches for 'all' mode
+            
+            for (let batchStart = 0; batchStart < indices.length; batchStart += batchSize) {
+                const batchEnd = Math.min(batchStart + batchSize, indices.length);
+                const batchPromises = [];
+                
+                for (let b = batchStart; b < batchEnd; b++) {
+                    const i = indices[b];
+                    const date = allDates[i];
+                    batchPromises.push(
+                        loadGeoJSONData(date).then(data => {
+                            const matchingFeature = data.features.find(feature => {
+                                const coords = feature.geometry.coordinates;
+                                return Math.abs(coords[1] - lat) < tolerance && 
+                                       Math.abs(coords[0] - lng) < tolerance;
+                            });
+                            
+                            if (matchingFeature && matchingFeature.properties[property] != null) {
+                                return {
+                                    date: new Date(date),
+                                    value: matchingFeature.properties[property]
+                                };
+                            }
+                            return null;
+                        }).catch(() => null)
+                    );
+                }
+                
+                const batchResults = await Promise.all(batchPromises);
+                timeSeriesData.push(...batchResults.filter(result => result !== null));
+                
+                // Small delay between batches to prevent overwhelming the browser
+                // Longer delay for 'all' mode to be more conservative
+                if (batchEnd < indices.length) {
+                    const delay = timeseriesSampling === 'all' ? 25 : 10;
+                    await new Promise(resolve => setTimeout(resolve, delay));
+                }
+            }
+            
+            return timeSeriesData.sort((a, b) => a.date - b.date);
+        }
+
+        /**
+         * Color scale generation with caching
+         */
+        function getColorScale(selectedScheme, invert, min, max) {
+            const cacheKey = `${selectedScheme}-${invert}-${min}-${max}`;
+            
+            if (colorScaleCache.has(cacheKey)) {
+                return colorScaleCache.get(cacheKey);
+            }
+            
+            let schemeColors = [...colorSchemes[selectedScheme]];
+            if (invert) {
+                schemeColors = schemeColors.reverse();
+            }
+            
+            const scale = chroma.scale(schemeColors)
+                .domain([min, max])
+                .mode('lab');
+            
+            colorScaleCache.set(cacheKey, scale);
+            
+            // Limit cache size
+            if (colorScaleCache.size > 100) {
+                const firstKey = colorScaleCache.keys().next().value;
+                colorScaleCache.delete(firstKey);
+            }
+            
+            return scale;
+        }
+
+        /**
+         * Viewport culling for better performance with large datasets
+         */
+        function isPointInViewport(coords) {
+            if (!enableCulling || !currentBounds) return true;
+            
+            const latlng = L.latLng(coords[1], coords[0]);
+            return currentBounds.contains(latlng);
+        }
+
+        /**
+         * Update current viewport bounds
+         */
+        function updateViewportBounds() {
+            if (map) {
+                currentBounds = map.getBounds();
+                
+                // Expand bounds slightly for smoother panning
+                const latSpan = currentBounds.getNorth() - currentBounds.getSouth();
+                const lngSpan = currentBounds.getEast() - currentBounds.getWest();
+                
+                currentBounds = L.latLngBounds(
+                    [currentBounds.getSouth() - latSpan * 0.1, currentBounds.getWest() - lngSpan * 0.1],
+                    [currentBounds.getNorth() + latSpan * 0.1, currentBounds.getEast() + lngSpan * 0.1]
+                );
+            }
+        }
+
+        /**
+         * Create interactive SVG time series chart with embedded hover info
+         */
+        function createTimeSeriesChart(data, property) {
+            if (!data || data.length === 0) {
+                return '<div class="chart-error"><i class="fas fa-exclamation-circle"></i>&nbsp;No time series data available</div>';
+            }
+
+            const width = 280;
+            const height = 130;
+            const margin = { top: 25, right: 20, bottom: 40, left: 40 }; // Increased margins for embedded info
+            const chartWidth = width - margin.left - margin.right;
+            const chartHeight = height - margin.top - margin.bottom;
+
+            const chartId = `chart-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
+            // Pre-calculate scales and paths for better performance
+            const minValue = Math.min(...data.map(d => d.value));
+            const maxValue = Math.max(...data.map(d => d.value));
+            const valueRange = maxValue - minValue;
+            const paddedMinValue = minValue - valueRange * 0.1;
+            const paddedMaxValue = maxValue + valueRange * 0.1;
+
+            // Pre-calculate all positions
+            const points = data.map((d, i) => {
+                const x = margin.left + (i / (data.length - 1)) * chartWidth;
+                const y = margin.top + chartHeight - ((d.value - paddedMinValue) / (paddedMaxValue - paddedMinValue)) * chartHeight;
+                return { x, y, value: d.value, date: d.date, index: i };
+            });
+
+            const pathData = points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ');
+
+            // Pre-calculate ticks
+            const numTicks = 4;
+            const yTicks = Array.from({ length: numTicks + 1 }, (_, i) => {
+                const value = paddedMinValue + (paddedMaxValue - paddedMinValue) * (i / numTicks);
+                const y = margin.top + chartHeight - (i / numTicks) * chartHeight;
+                return { value: value.toFixed(3), y };
+            });
+
+            const numXTicks = Math.min(4, data.length);
+            const xTicks = Array.from({ length: numXTicks }, (_, i) => {
+                const dataIndex = Math.floor((i / (numXTicks - 1)) * (data.length - 1));
+                const point = points[dataIndex];
+                const date = data[dataIndex].date;
+                return { 
+                    label: date.getFullYear().toString().slice(-2) + '/' + (date.getMonth() + 1).toString().padStart(2, '0'), 
+                    x: point.x 
+                };
+            });
+
+            const svgContent = `
+                <svg width="${width}" height="${height}" style="background: white; border-radius: 4px;" id="${chartId}">
+                    <!-- Background -->
+                    <rect width="${width}" height="${height}" fill="white" rx="4"/>
+                    
+                    <!-- Grid lines -->
+                    ${yTicks.map(tick => `<line x1="${margin.left}" y1="${tick.y}" x2="${width - margin.right}" y2="${tick.y}" stroke="#e5e7eb" stroke-width="1"/>`).join('')}
+                    
+                    <!-- Axes -->
+                    <line x1="${margin.left}" y1="${margin.top}" x2="${margin.left}" y2="${height - margin.bottom}" stroke="#374151" stroke-width="1"/>
+                    <line x1="${margin.left}" y1="${height - margin.bottom}" x2="${width - margin.right}" y2="${height - margin.bottom}" stroke="#374151" stroke-width="1"/>
+                    
+                    <!-- Data line -->
+                    <path d="${pathData}" fill="none" stroke="#3b82f6" stroke-width="2"/>
+                    
+                    <!-- Data points -->
+                    ${points.map(point => `
+                        <circle cx="${point.x}" cy="${point.y}" r="3" fill="#3b82f6" class="data-point" data-index="${point.index}" style="cursor: pointer;"/>
+                    `).join('')}
+                    
+                    <!-- Y-axis labels -->
+                    ${yTicks.map(tick => `<text x="${margin.left - 5}" y="${tick.y + 3}" text-anchor="end" font-size="10" font-family="Inter" fill="#6b7280">${tick.value}</text>`).join('')}
+                    
+                    <!-- X-axis labels -->
+                    ${xTicks.map(tick => `<text x="${tick.x}" y="${height - margin.bottom + 15}" text-anchor="middle" font-size="10" font-family="Inter" fill="#6b7280">${tick.label}</text>`).join('')}
+                    
+                    <!-- Title -->
+                    <text x="${width / 2}" y="15" text-anchor="middle" font-size="11" font-family="Inter" font-weight="600" fill="#1f2937">${property.toUpperCase()} Time Series (${timeseriesSampling})</text>
+                    
+                    <!-- Embedded hover info area -->
+                    <rect x="5" y="${height - 35}" width="${width - 10}" height="25" fill="rgba(0,0,0,0.05)" stroke="rgba(0,0,0,0.1)" stroke-width="1" rx="3" id="info-bg-${chartId}" style="opacity: 0;"/>
+                    <text x="10" y="${height - 22}" font-size="10" font-family="Inter" font-weight="500" fill="#1f2937" id="info-date-${chartId}" style="opacity: 0;"></text>
+                    <text x="10" y="${height - 10}" font-size="10" font-family="Inter" font-weight="600" fill="#3b82f6" id="info-value-${chartId}" style="opacity: 0;"></text>
+                    
+                    <!-- Hover line indicator -->
+                    <line x1="0" y1="${margin.top}" x2="0" y2="${height - margin.bottom}" stroke="#3b82f6" stroke-width="1" stroke-dasharray="3,3" id="hover-line-${chartId}" style="opacity: 0;"/>
+                </svg>
+            `;
+
+            // Add event listeners after the chart is rendered
+            setTimeout(() => {
+                const chart = document.getElementById(chartId);
+                const infoBg = document.getElementById(`info-bg-${chartId}`);
+                const infoDate = document.getElementById(`info-date-${chartId}`);
+                const infoValue = document.getElementById(`info-value-${chartId}`);
+                const hoverLine = document.getElementById(`hover-line-${chartId}`);
+                
+                if (chart && infoBg && infoDate && infoValue && hoverLine) {
+                    const dataPoints = chart.querySelectorAll('.data-point');
+                    
+                    const showInfo = (index) => {
+                        const point = points[index];
+                        const dataPoint = data[index];
+                        
+                        // Format date
+                        const formattedDate = dataPoint.date.toLocaleDateString('en-US', {
+                            year: 'numeric',
+                            month: 'short',
+                            day: 'numeric'
+                        });
+                        
+                        // Update info display
+                        infoDate.textContent = formattedDate;
+                        infoValue.textContent = `${property}: ${dataPoint.value.toFixed(4)}`;
+                        
+                        // Position hover line
+                        hoverLine.setAttribute('x1', point.x);
+                        hoverLine.setAttribute('x2', point.x);
+                        
+                        // Show all hover elements
+                        infoBg.style.opacity = '1';
+                        infoDate.style.opacity = '1';
+                        infoValue.style.opacity = '1';
+                        hoverLine.style.opacity = '0.7';
+                        
+                        // Highlight the specific point
+                        dataPoints.forEach(dp => {
+                            dp.setAttribute('r', '3');
+                            dp.setAttribute('fill', '#3b82f6');
+                        });
+                        dataPoints[index].setAttribute('r', '5');
+                        dataPoints[index].setAttribute('fill', '#1d4ed8');
+                    };
+                    
+                    const hideInfo = () => {
+                        infoBg.style.opacity = '0';
+                        infoDate.style.opacity = '0';
+                        infoValue.style.opacity = '0';
+                        hoverLine.style.opacity = '0';
+                        
+                        // Reset all points
+                        dataPoints.forEach(dp => {
+                            dp.setAttribute('r', '3');
+                            dp.setAttribute('fill', '#3b82f6');
+                        });
+                    };
+                    
+                    // Add event listeners to data points
+                    dataPoints.forEach((point, index) => {
+                        point.addEventListener('mouseenter', () => showInfo(index));
+                        point.addEventListener('mouseleave', hideInfo);
+                    });
+                    
+                    // Add chart-wide hover for smooth interaction
+                    chart.addEventListener('mouseleave', hideInfo);
+                }
+            }, 50);
+
+            return svgContent;
+        }
 
         /**
          * Generates an array of date strings between a start and end date.
-         * @param {string} start - Start date in 'YYYY-MM-DD' format.
-         * @param {string} end - End date in 'YYYY-MM-DD' format.
-         * @returns {string[]} An array of date strings.
          */
         function generateDateRange(start, end) {
             const dates = [];
-            let currentDate = new Date(start + 'T00:00:00'); // Use T00:00:00 to avoid timezone issues
+            let currentDate = new Date(start + 'T00:00:00');
             const stopDate = new Date(end + 'T00:00:00');
             while (currentDate <= stopDate) {
                 dates.push(currentDate.toISOString().split('T')[0]);
@@ -208,83 +2362,313 @@
         }
 
         /**
-         * Initializes the Leaflet map.
+         * Switch basemap
+         */
+        function switchBasemap(basemapKey) {
+            if (currentBasemap) {
+                map.removeLayer(currentBasemap);
+            }
+
+            const config = basemapConfigs[basemapKey];
+            currentBasemap = L.tileLayer(config.url, {
+                attribution: config.attribution,
+                maxZoom: 18
+            }).addTo(map);
+        }
+
+        /**
+         * Initializes the Leaflet map with professional controls.
          */
         function initMap() {
-            map = L.map('map').setView([34.0522, -118.2437], 6); // Centered on Southern California/Arizona
+            map = L.map('map').setView([34.0522, -118.2437], 6);
 
-            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+            switchBasemap('osm');
+
+            const scaleControl = L.control.scale({
+                position: 'bottomleft',
+                maxWidth: 200,
+                metric: true,
+                imperial: true,
+                updateWhenIdle: false
             }).addTo(map);
 
-            // Initialize the legend
-            legend = L.control({ position: 'bottomright' });
-            legend.onAdd = function (map) {
-                const div = L.DomUtil.create('div', 'info legend bg-white p-2 rounded-md shadow-md');
-                div.innerHTML = '<h4>Color Legend</h4><div id="legend-content">No data loaded</div>';
+            initColorLegend();
+            initCoordinateDisplay();
+            initZoomIndicator();
+
+            // Event handlers with throttling
+            map.on('mousemove', throttle(updateCoordinateDisplay, 16)); // 60fps
+            map.on('zoomend', updateZoomIndicator);
+            map.on('moveend', debounce(() => {
+                updateViewportBounds();
+                updateVisibleDataStats();
+            }, 150));
+            map.on('zoomend', debounce(() => {
+                updateViewportBounds();
+                updateVisibleDataStats();
+                updateMarkerSizes();
+            }, 150));
+            
+            // Initialize viewport bounds
+            updateViewportBounds();
+        }
+
+        function initColorLegend() {
+            colorLegend = L.control({ position: 'topleft' });
+            colorLegend.onAdd = function() {
+                const div = L.DomUtil.create('div', 'leaflet-control-colorlegend');
+                div.style.marginTop = '60px';
+                div.innerHTML = `
+                    <div class="legend-date-display">
+                        <div class="date-label">Current Date</div>
+                        <div id="legend-current-date">Loading...</div>
+                    </div>
+                    <div class="legend-header">
+                        <i class="fas fa-palette" style="color: #3B82F6;"></i>
+                        Color Scale
+                    </div>
+                    <div class="legend-property">
+                        Property: <span id="legend-property-name">-</span>
+                    </div>
+                    <div class="legend-content">
+                        <div class="legend-gradient" id="legend-gradient"></div>
+                        <div class="legend-labels" id="legend-labels">
+                            <span>-</span>
+                            <span>-</span>
+                            <span>-</span>
+                            <span>-</span>
+                            <span>-</span>
+                        </div>
+                        <div style="clear: both;"></div>
+                    </div>
+                    <div class="legend-stats" id="legend-stats">
+                        <div><span>Points:</span><span>-</span></div>
+                        <div><span>Range:</span><span>-</span></div>
+                        <div><span>Mean:</span><span>-</span></div>
+                    </div>
+                `;
                 return div;
             };
-            legend.addTo(map);
+            colorLegend.addTo(map);
         }
 
-        /**
-         * Displays an error message in the message box.
-         * @param {string} text - The error message to display.
-         */
-        function showMessage(text) {
+        function initCoordinateDisplay() {
+            coordinateDisplay = L.control({ position: 'bottomleft' });
+            coordinateDisplay.onAdd = function() {
+                const div = L.DomUtil.create('div', 'leaflet-control-coordinates');
+                div.innerHTML = 'Lat: -, Lng: -';
+                div.id = 'coordinate-display';
+                return div;
+            };
+            coordinateDisplay.addTo(map);
+        }
+
+        function initZoomIndicator() {
+            zoomIndicator = L.control({ position: 'topleft' });
+            zoomIndicator.onAdd = function() {
+                const div = L.DomUtil.create('div', 'leaflet-control-zoom-indicator');
+                div.innerHTML = `Zoom: ${map.getZoom()}`;
+                div.id = 'zoom-indicator';
+                return div;
+            };
+            zoomIndicator.addTo(map);
+        }
+
+        function updateCoordinateDisplay(e) {
+            const display = document.getElementById('coordinate-display');
+            if (display) {
+                display.innerHTML = `Lat: ${e.latlng.lat.toFixed(6)}, Lng: ${e.latlng.lng.toFixed(6)}`;
+            }
+        }
+
+        function updateZoomIndicator() {
+            const indicator = document.getElementById('zoom-indicator');
+            if (indicator) {
+                indicator.innerHTML = `Zoom: ${map.getZoom()}`;
+            }
+        }
+
+        function showLoading() {
+            loadingIndicator.classList.remove('hidden');
+        }
+
+        function hideLoading() {
+            loadingIndicator.classList.add('hidden');
+        }
+
+        function showMessage(text, type = 'error') {
             messageText.textContent = text;
+            messageBox.className = 'message-box p-3 text-sm rounded-lg border mt-3';
+            
+            if (type === 'error') {
+                messageBox.classList.add('text-red-700', 'bg-red-100', 'border-red-200');
+            } else {
+                messageBox.classList.add('text-green-700', 'bg-green-100', 'border-green-200');
+            }
+            
             messageBox.classList.remove('hidden');
+            setTimeout(hideMessage, 5000);
         }
 
-        /**
-         * Hides the message box.
-         */
         function hideMessage() {
             messageBox.classList.add('hidden');
         }
 
-
         /**
-         * Fetches GeoJSON data for a specific date and updates the map.
+         * Update the date display in the color legend
          */
-        async function updateMap() {
-            hideMessage();
-            const dateIndex = parseInt(dateSlider.value, 10);
-            const selectedDate = allDates[dateIndex];
-            const property = propertySelector.value;
-
-            if (!selectedDate) return;
-
-            // Update the date label
-            dateLabel.textContent = `Date: ${selectedDate}`;
-
-            try {
-                const response = await fetch(`${geojsonDirectory}/${selectedDate}.geojson`);
-                if (!response.ok) {
-                    throw new Error(`File not found or couldn't be loaded: ${selectedDate}.geojson (Status: ${response.status})`);
-                }
-                currentData = await response.json();
-
-                renderData(property);
-
-            } catch (error) {
-                console.error('Error loading GeoJSON:', error);
-                showMessage(error.message);
-                // If a file fails to load, clear the existing layer
-                if (geoJsonLayer) {
-                    map.removeLayer(geoJsonLayer);
-                }
+        function updateLegendDate(date) {
+            const dateDisplay = document.getElementById('legend-current-date');
+            if (dateDisplay && date) {
+                // Format date nicely
+                const dateObj = new Date(date + 'T00:00:00');
+                const options = { 
+                    year: 'numeric', 
+                    month: 'long', 
+                    day: 'numeric',
+                    weekday: 'short'
+                };
+                dateDisplay.textContent = dateObj.toLocaleDateString('en-US', options);
             }
         }
 
         /**
-         * Renders the currently loaded data onto the map.
-         * @param {string} property - The property to use for coloring ('east', 'north', 'up').
+         * Data summary
+         */
+        function updateDataSummary(useVisibleOnly = true) {
+            const property = propertySelector.value;
+            
+            if (!currentData || !currentData.features) {
+                document.getElementById('summary-points').textContent = '0';
+                document.getElementById('summary-valid').textContent = '0';
+                document.getElementById('summary-min').textContent = '-';
+                document.getElementById('summary-max').textContent = '-';
+                return;
+            }
+
+            let features = currentData.features;
+            const totalPoints = features.length;
+
+            if (useVisibleOnly && enableCulling && currentBounds) {
+                features = features.filter(feature => {
+                    const coords = feature.geometry.coordinates;
+                    return isPointInViewport(coords);
+                });
+            }
+
+            const visiblePoints = features.length;
+            const values = [];
+            
+            // Value extraction
+            for (let i = 0; i < features.length; i++) {
+                const value = features[i].properties[property];
+                if (value != null && !isNaN(value)) {
+                    values.push(value);
+                }
+            }
+            
+            const validPoints = values.length;
+            const min = values.length > 0 ? Math.min(...values).toFixed(3) : '-';
+            const max = values.length > 0 ? Math.max(...values).toFixed(3) : '-';
+
+            document.getElementById('summary-points').textContent = useVisibleOnly ? 
+                `${visiblePoints}/${totalPoints}` : totalPoints;
+            document.getElementById('summary-valid').textContent = validPoints;
+            document.getElementById('summary-min').textContent = min;
+            document.getElementById('summary-max').textContent = max;
+
+            return { features, values };
+        }
+
+        function updateVisibleDataStats() {
+            if (!currentData || !currentData.features) return;
+            
+            const property = propertySelector.value;
+            const summaryData = updateDataSummary(true);
+            
+            if (summaryData && summaryData.values && summaryData.values.length > 0) {
+                const values = summaryData.values;
+                const colorMin = parseFloat(colorMinInput.value) || Math.min(...values);
+                const colorMax = parseFloat(colorMaxInput.value) || Math.max(...values);
+                updateColorLegend(currentScale, colorMin, colorMax, property, values);
+            }
+        }
+
+        /**
+         * Map update function
+         */
+        async function updateMap() {
+            hideMessage();
+            showLoading();
+            
+            const dateIndex = parseInt(dateSlider.value, 10);
+            const selectedDate = allDates[dateIndex];
+            const property = propertySelector.value;
+
+            if (!selectedDate) {
+                hideLoading();
+                return;
+            }
+
+            // Update legend date display
+            updateLegendDate(selectedDate);
+
+            document.getElementById('date-label').innerHTML = `
+                <i class="fas fa-calendar text-blue-500"></i>
+                Date: ${selectedDate} <span id="loading-indicator" class="loading"></span>
+            `;
+
+            try {
+                currentData = await loadGeoJSONData(selectedDate);
+                
+                renderScheduler.schedule(() => {
+                    renderData(property);
+                    updateDataSummary(true);
+                });
+                
+                // Preload adjacent dates in background
+                preloadAdjacentDates(dateIndex);
+
+                document.getElementById('date-label').innerHTML = `
+                    <i class="fas fa-calendar text-blue-500"></i>
+                    Date: ${selectedDate}
+                `;
+
+            } catch (error) {
+                console.error('Error loading GeoJSON:', error);
+                showMessage(error.message);
+                
+                if (geoJsonLayer) {
+                    map.removeLayer(geoJsonLayer);
+                    geoJsonLayer = null;
+                }
+                currentData = null;
+                updateDataSummary(false);
+                updateColorLegend();
+                
+                document.getElementById('date-label').innerHTML = `
+                    <i class="fas fa-calendar text-red-500"></i>
+                    Date: ${selectedDate} <i class="fas fa-exclamation-triangle text-red-500" title="Data not available"></i>
+                `;
+            }
+            
+            hideLoading();
+        }
+
+        /**
+         * Rendering with viewport culling and layer reuse
          */
         function renderData(property) {
+            const renderStart = performance.now();
+            
             if (!currentData || !currentData.features || currentData.features.length === 0) {
-                if (geoJsonLayer) map.removeLayer(geoJsonLayer);
-                updateLegend(); // Clear legend
+                if (geoJsonLayer) {
+                    map.removeLayer(geoJsonLayer);
+                    geoJsonLayer = null;
+                }
+                updateColorLegend();
+                performanceMetrics.renderTime = Math.round(performance.now() - renderStart);
+                updatePerformanceMetrics();
                 return;
             }
 
@@ -292,123 +2676,520 @@
             let colorMin = parseFloat(colorMinInput.value);
             let colorMax = parseFloat(colorMaxInput.value);
 
-            // If inputs are empty, auto-calculate the range from the data
+            const values = currentData.features.map(f => f.properties[property]).filter(v => v != null && !isNaN(v));
+            
             if (isNaN(colorMin) || isNaN(colorMax)) {
-                const values = currentData.features.map(f => f.properties[property]).filter(v => v != null);
                 if (values.length > 0) {
                     colorMin = Math.min(...values);
                     colorMax = Math.max(...values);
-                    // Update the input fields with the auto-detected values
-                    colorMinInput.value = colorMin.toFixed(2);
-                    colorMaxInput.value = colorMax.toFixed(2);
+                    colorMinInput.value = colorMin.toFixed(3);
+                    colorMaxInput.value = colorMax.toFixed(3);
                 } else {
-                    colorMin = 0;
-                    colorMax = 1;
+                    colorMin = -0.03;
+                    colorMax = 0.03;
                 }
             }
 
-            // Create the color scale
-            const colorScale = chroma.scale(['#2c7bb6', '#abd9e9', '#ffffbf', '#fdae61', '#d7191c']).domain([colorMin, colorMax]).mode('lab');
+            // Get color scale
+            const selectedScheme = colorSchemeSelector.value;
+            const invert = invertColorsCheckbox.checked;
+            currentScale = getColorScale(selectedScheme, invert, colorMin, colorMax);
 
             // Remove previous layer
             if (geoJsonLayer) {
                 map.removeLayer(geoJsonLayer);
             }
 
-            // Create new GeoJSON layer with styled points
-            geoJsonLayer = L.geoJSON(currentData, {
+            // Filter features for viewport culling if enabled
+            let featuresToRender = currentData.features;
+            if (enableCulling && currentBounds) {
+                featuresToRender = currentData.features.filter(feature => 
+                    isPointInViewport(feature.geometry.coordinates)
+                );
+            }
+
+            // Create GeoJSON layer
+            geoJsonLayer = L.geoJSON({ 
+                type: "FeatureCollection", 
+                features: featuresToRender 
+            }, {
                 pointToLayer: function (feature, latlng) {
                     const value = feature.properties[property];
-                    const color = (value != null) ? colorScale(value).hex() : '#808080'; // Gray for null values
+                    const color = (value != null && !isNaN(value)) ? currentScale(value).hex() : '#808080';
+
+                    const zoom = map.getZoom();
+                    const radius = Math.max(3, Math.min(12, zoom - 2));
 
                     return L.circleMarker(latlng, {
-                        radius: 6,
+                        radius: radius,
                         fillColor: color,
-                        color: "#000",
-                        weight: 0.5,
+                        color: color,
+                        weight: 0,
                         opacity: 1,
-                        fillOpacity: 0.8
+                        fillOpacity: 0.9
                     });
                 },
                 onEachFeature: function (feature, layer) {
-                    // Create a popup with all properties
-                    let popupContent = '<div class="space-y-1 text-sm">';
+                    const coords = feature.geometry.coordinates;
+                    const currentProp = propertySelector.value;
+                    
+                    let popupContent = `
+                        <div style="font-family: Inter, sans-serif; max-width: 300px;">
+                            <div style="font-weight: 600; font-size: 14px; margin-bottom: 8px; color: #1f2937;">
+                                Station Information
+                            </div>
+                            <div style="font-size: 12px; color: #6b7280; margin-bottom: 8px;">
+                                <strong>Location:</strong> ${coords[1].toFixed(6)}, ${coords[0].toFixed(6)}
+                            </div>
+                    `;
+                    
+                    const numericProps = ['east', 'north', 'up', 'sigma_east', 'sigma_north', 'sigma_up'];
+                    popupContent += '<div style="font-size: 12px; margin-bottom: 12px;">';
                     for (const key in feature.properties) {
-                        popupContent += `<strong>${key}:</strong> ${feature.properties[key]}<br>`;
+                        const value = feature.properties[key];
+                        const isNumeric = numericProps.includes(key);
+                        const isCurrent = key === currentProp;
+                        
+                        const style = isCurrent ? 'font-weight: 600; color: #3b82f6;' : 'color: #374151;';
+                        const displayValue = (isNumeric && typeof value === 'number') ? 
+                            value.toFixed(3) : value;
+                        
+                        popupContent += `
+                            <div style="display: flex; justify-content: space-between; margin-bottom: 2px; ${style}">
+                                <span>${key}:</span>
+                                <span>${displayValue}</span>
+                            </div>
+                        `;
                     }
                     popupContent += '</div>';
-                    layer.bindPopup(popupContent);
+                    
+                    popupContent += `
+                        <div style="border-top: 1px solid #e5e7eb; padding-top: 8px;">
+                            <div style="font-weight: 600; font-size: 12px; margin-bottom: 8px; color: #1f2937;">
+                                Time Series Chart (${timeseriesSampling} sampling)
+                            </div>
+                            <div id="timeseries-${coords[1]}-${coords[0]}" class="timeseries-chart">
+                                <div class="loading-chart">
+                                    <i class="fas fa-spinner fa-spin"></i>&nbsp;Loading chart...
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                    
+                    popupContent += '</div>';
+                    
+                    const popup = L.popup({
+                        maxWidth: 320,
+                        className: 'custom-popup'
+                    }).setContent(popupContent);
+                    
+                    layer.bindPopup(popup);
+                    
+                    // Time series loading
+                    layer.on('popupopen', async function() {
+                        const chartId = `timeseries-${coords[1]}-${coords[0]}`;
+                        const chartContainer = document.getElementById(chartId);
+                        
+                        if (chartContainer) {
+                            try {
+                                const timeSeriesData = await generateTimeSeriesData(coords, currentProp);
+                                const chartSvg = createTimeSeriesChart(timeSeriesData, currentProp);
+                                chartContainer.innerHTML = chartSvg;
+                            } catch (error) {
+                                console.error('Error loading time series:', error);
+                                chartContainer.innerHTML = '<div class="chart-error"><i class="fas fa-exclamation-triangle"></i>&nbsp;Failed to load chart</div>';
+                            }
+                        }
+                    });
                 }
             }).addTo(map);
 
-            updateLegend(colorScale, colorMin, colorMax);
+            // Store visible markers for efficient updates
+            visibleMarkers.clear();
+            geoJsonLayer.eachLayer(layer => visibleMarkers.add(layer));
+
+            updateVisibleDataStats();
+            
+            performanceMetrics.renderTime = Math.round(performance.now() - renderStart);
+            updatePerformanceMetrics();
         }
 
         /**
-         * Updates the color legend on the map.
-         * @param {object} scale - The chroma.js color scale.
-         * @param {number} min - The minimum value of the scale.
-         * @param {number} max - The maximum value of the scale.
+         * Marker size updates
          */
-        function updateLegend(scale, min, max) {
-            const legendContent = document.getElementById('legend-content');
+        function updateMarkerSizes() {
+            if (!geoJsonLayer) return;
+            
+            const zoom = map.getZoom();
+            const radius = Math.max(3, Math.min(12, zoom - 2));
+            
+            geoJsonLayer.eachLayer(function(layer) {
+                if (layer.setRadius) {
+                    layer.setRadius(radius);
+                }
+            });
+        }
+
+        function updateColorLegend(scale, min, max, property, values) {
+            const propertyName = document.getElementById('legend-property-name');
+            const gradient = document.getElementById('legend-gradient');
+            const labels = document.getElementById('legend-labels');
+            const stats = document.getElementById('legend-stats');
+
             if (!scale || isNaN(min) || isNaN(max)) {
-                legendContent.innerHTML = 'No data to display';
+                propertyName.textContent = '-';
+                gradient.style.background = '#f3f4f6';
+                labels.innerHTML = '<span>-</span>'.repeat(5);
+                stats.innerHTML = `
+                    <div><span>Points:</span><span>0</span></div>
+                    <div><span>Range:</span><span>-</span></div>
+                    <div><span>Mean:</span><span>-</span></div>
+                `;
                 return;
             }
 
-            const grades = [
-                min,
-                min + (max - min) * 0.25,
-                min + (max - min) * 0.5,
-                min + (max - min) * 0.75,
-                max
-            ];
+            propertyName.textContent = property.toUpperCase();
 
-            let innerHTML = '';
-            for (let i = 0; i < grades.length; i++) {
-                const from = grades[i];
-                const to = grades[i + 1];
-                innerHTML +=
-                    '<div class="flex items-center">' +
-                    `<i style="background:${scale(from).hex()}"></i> ` +
-                    `${from.toFixed(2)}` + (to ? `&ndash;${to.toFixed(2)}<br>` : '+') +
-                    '</div>';
+            // Pre-calculate gradient colors
+            const colors = [];
+            for (let i = 0; i <= 10; i++) {
+                const value = min + (max - min) * (i / 10);
+                colors.push(scale(value).hex());
             }
-            legendContent.innerHTML = innerHTML;
+            gradient.style.background = `linear-gradient(to top, ${colors.join(', ')})`;
+
+            const labelValues = [max, max * 0.75 + min * 0.25, (max + min) / 2, max * 0.25 + min * 0.75, min];
+            labels.innerHTML = labelValues.map(v => `<span>${v.toFixed(3)}</span>`).join('');
+
+            const mean = values.length > 0 ? (values.reduce((a, b) => a + b, 0) / values.length).toFixed(3) : '-';
+            stats.innerHTML = `
+                <div><span>Points:</span><span>${values.length}</span></div>
+                <div><span>Range:</span><span>${(max - min).toFixed(3)}</span></div>
+                <div><span>Mean:</span><span>${mean}</span></div>
+            `;
+        }
+
+        // Playback controls
+        function togglePlayback() {
+            if (isPlaying) {
+                pausePlayback();
+            } else {
+                startPlayback();
+            }
+        }
+
+        function startPlayback() {
+            if (isPlaying) return;
+            
+            isPlaying = true;
+            playBtn.innerHTML = '<i class="fas fa-pause"></i>';
+            playBtn.classList.add('active');
+            
+            const speed = parseInt(speedSelector.value);
+            playInterval = setInterval(() => {
+                const currentIndex = parseInt(dateSlider.value);
+                const maxIndex = parseInt(dateSlider.max);
+                
+                if (currentIndex >= maxIndex) {
+                    pausePlayback();
+                    return;
+                }
+                
+                dateSlider.value = currentIndex + 1;
+                updateMap();
+            }, speed);
+        }
+
+        function pausePlayback() {
+            isPlaying = false;
+            playBtn.innerHTML = '<i class="fas fa-play"></i>';
+            playBtn.classList.remove('active');
+            
+            if (playInterval) {
+                clearInterval(playInterval);
+                playInterval = null;
+            }
+        }
+
+        function stepForward() {
+            pausePlayback();
+            const current = parseInt(dateSlider.value);
+            const max = parseInt(dateSlider.max);
+            if (current < max) {
+                dateSlider.value = current + 1;
+                updateMap();
+            }
+        }
+
+        function stepBackward() {
+            pausePlayback();
+            const current = parseInt(dateSlider.value);
+            if (current > 0) {
+                dateSlider.value = current - 1;
+                updateMap();
+            }
+        }
+
+        function resetToStart() {
+            pausePlayback();
+            dateSlider.value = 0;
+            updateMap();
         }
 
         /**
-         * Sets up the initial state and event listeners.
+         * Setup controls and event listeners (with DOM element initialization)
          */
         function setupControls() {
+            console.log('Setting up controls...');
+            
+            // Initialize all DOM elements first
+            initializeUIElements();
+
+            // Initialize tab functionality
+            initializeTabs();
+
+            // Check for missing critical elements
+            const criticalElements = {
+                'date-slider': dateSlider,
+                'property-selector': propertySelector,
+                'color-scheme-selector': colorSchemeSelector,
+                'basemap-selector': basemapSelector
+            };
+
+            // Log missing elements for debugging
+            let missingCritical = false;
+            for (const [id, element] of Object.entries(criticalElements)) {
+                if (!element) {
+                    console.error(`Critical element missing: ${id}`);
+                    missingCritical = true;
+                }
+            }
+
+            if (missingCritical) {
+                console.error('Cannot continue - critical UI elements are missing!');
+                return;
+            }
+
+            // Initialize date range
             allDates = generateDateRange(startDate, endDate);
             dateSlider.min = 0;
             dateSlider.max = allDates.length - 1;
             dateSlider.value = 0;
 
-            // Event Listeners
-            dateSlider.addEventListener('input', updateMap);
-            propertySelector.addEventListener('change', () => {
-                // When property changes, re-render with current data
+            // Debounced update functions
+            const debouncedUpdateMap = debounce(updateMap, 100);
+            const debouncedRenderUpdate = debounce(() => {
                 renderData(propertySelector.value);
-            });
-            colorMinInput.addEventListener('change', () => renderData(propertySelector.value));
-            colorMaxInput.addEventListener('change', () => renderData(propertySelector.value));
+                updateVisibleDataStats();
+            }, 100);
+
+            // Basic Event Listeners
+            dateSlider.addEventListener('input', debouncedUpdateMap);
+            propertySelector.addEventListener('change', debouncedRenderUpdate);
+            colorSchemeSelector.addEventListener('change', debouncedRenderUpdate);
+            invertColorsCheckbox.addEventListener('change', debouncedRenderUpdate);
+            basemapSelector.addEventListener('change', (e) => switchBasemap(e.target.value));
+            colorMinInput.addEventListener('change', debouncedRenderUpdate);
+            colorMaxInput.addEventListener('change', debouncedRenderUpdate);
+            
             autoScaleBtn.addEventListener('click', () => {
-                // Clear inputs and re-render to trigger auto-detection
                 colorMinInput.value = '';
                 colorMaxInput.value = '';
                 renderData(propertySelector.value);
             });
+
+            // Performance controls with null checks
+            if (enableCachingCheckbox) {
+                enableCachingCheckbox.addEventListener('change', (e) => {
+                    enableCaching = e.target.checked;
+                    if (!enableCaching) {
+                        dataCache.clear();
+                    }
+                    updatePerformanceMetrics();
+                });
+            }
+
+            if (enableCullingCheckbox) {
+                enableCullingCheckbox.addEventListener('change', (e) => {
+                    enableCulling = e.target.checked;
+                    renderData(propertySelector.value);
+                    updateVisibleDataStats();
+                });
+            }
+
+            if (showPerformanceCheckbox) {
+                showPerformanceCheckbox.addEventListener('change', (e) => {
+                    showPerformance = e.target.checked;
+                    updatePerformanceMetrics();
+                });
+            }
+
+            if (timeseriesSamplingSelector) {
+                timeseriesSamplingSelector.addEventListener('change', (e) => {
+                    timeseriesSampling = e.target.value;
+                    // Clear any open popups to force refresh with new sampling
+                    map.closePopup();
+                });
+            }
+
+            if (cacheSizeSlider && cacheSizeDisplay) {
+                cacheSizeSlider.addEventListener('input', (e) => {
+                    const newSize = parseInt(e.target.value);
+                    cacheSizeDisplay.textContent = newSize;
+                    dataCache.maxSize = newSize;
+                    
+                    while (dataCache.size() > newSize) {
+                        dataCache.evictLRU();
+                    }
+                    updatePerformanceMetrics();
+                });
+            }
+
+            // Playback controls
+            playBtn.addEventListener('click', togglePlayback);
+            nextBtn.addEventListener('click', stepForward);
+            prevBtn.addEventListener('click', stepBackward);
+            resetBtn.addEventListener('click', resetToStart);
+
+            speedSelector.addEventListener('change', () => {
+                if (isPlaying) {
+                    pausePlayback();
+                    startPlayback();
+                }
+            });
+
+            // Map animation export controls
+            if (exportStartBtn) {
+                exportStartBtn.addEventListener('click', startMapAnimationExport);
+            }
+            
+            if (exportStopBtn) {
+                exportStopBtn.addEventListener('click', stopMapAnimationExport);
+            }
+
+            // Export preview updates
+            if (exportStartDate) {
+                exportStartDate.addEventListener('change', updateExportPreview);
+            }
+            if (exportEndDate) {
+                exportEndDate.addEventListener('change', updateExportPreview);
+            }
+            if (exportDateStep) {
+                exportDateStep.addEventListener('change', updateExportPreview);
+            }
+            if (exportFrameDuration) {
+                exportFrameDuration.addEventListener('change', updateExportPreview);
+            }
+            if (exportFramerate) {
+                exportFramerate.addEventListener('change', updateExportPreview);
+            }
+
+            // Keyboard shortcuts (including tab switching)
+            document.addEventListener('keydown', (e) => {
+                if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
+                
+                switch (e.code) {
+                    case 'Space':
+                        e.preventDefault();
+                        togglePlayback();
+                        break;
+                    case 'ArrowLeft':
+                        e.preventDefault();
+                        stepBackward();
+                        break;
+                    case 'ArrowRight':
+                        e.preventDefault();
+                        stepForward();
+                        break;
+                    case 'Home':
+                        e.preventDefault();
+                        resetToStart();
+                        break;
+                    case 'KeyE':
+                        if (e.ctrlKey || e.metaKey) {
+                            e.preventDefault();
+                            if (!isExporting) {
+                                startMapAnimationExport();
+                            }
+                        }
+                        break;
+                    case 'KeyP':
+                        if (e.ctrlKey || e.metaKey) {
+                            e.preventDefault();
+                            if (showPerformanceCheckbox) {
+                                showPerformanceCheckbox.checked = !showPerformanceCheckbox.checked;
+                                showPerformance = showPerformanceCheckbox.checked;
+                                updatePerformanceMetrics();
+                            }
+                        }
+                        break;
+                    case 'Digit1':
+                        if (e.ctrlKey || e.metaKey) {
+                            e.preventDefault();
+                            switchTab('main');
+                        }
+                        break;
+                    case 'Digit2':
+                        if (e.ctrlKey || e.metaKey) {
+                            e.preventDefault();
+                            switchTab('performance');
+                        }
+                        break;
+                    case 'Digit3':
+                        if (e.ctrlKey || e.metaKey) {
+                            e.preventDefault();
+                            switchTab('export');
+                        }
+                        break;
+                }
+            });
+
+            // Initialize export preview and performance metrics display
+            updateExportPreview();
+            updatePerformanceMetrics();
+            
+            console.log('Controls setup complete');
         }
 
         // --- INITIALIZATION ---
-        // Run the setup code once the DOM is fully loaded.
         document.addEventListener('DOMContentLoaded', () => {
+            console.log('Initializing optimized GeoJSON viewer...');
+            
+            // Note: MouseEvent.mozPressure deprecation warnings come from Leaflet library itself
+            // This is a known issue in Leaflet 1.9.4 - it will be fixed in future Leaflet versions
+            
+            // Initialize map first
             initMap();
+            
+            // Setup all controls and event listeners
             setupControls();
-            updateMap(); // Initial map load
+            
+            // Load initial data and set initial date
+            updateMap().then(() => {
+                // Ensure legend date is set on first load
+                const dateIndex = parseInt(dateSlider.value, 10);
+                const selectedDate = allDates[dateIndex];
+                if (selectedDate) {
+                    updateLegendDate(selectedDate);
+                }
+            });
+            
+            console.log('Initialization complete');
+            console.log(`Performance features: Caching=${enableCaching}, Culling=${enableCulling}`);
+            console.log(`Cache size limit: ${dataCache.maxSize} files`);
+            console.log(`Time series sampling: ${timeseriesSampling}`);
+        });
+
+        // Cleanup on page unload
+        window.addEventListener('beforeunload', () => {
+            if (isPlaying) {
+                pausePlayback();
+            }
+            if (isExporting) {
+                stopMapAnimationExport();
+            }
+            dataCache.clear();
+            colorScaleCache.clear();
         });
 
     </script>
