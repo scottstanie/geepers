@@ -2456,7 +2456,7 @@
             coordinateDisplay = L.control({ position: 'bottomleft' });
             coordinateDisplay.onAdd = function() {
                 const div = L.DomUtil.create('div', 'leaflet-control-coordinates');
-                div.innerHTML = 'Lat: -, Lng: -';
+                div.innerHTML = 'Lat: -,Lon: -';
                 div.id = 'coordinate-display';
                 return div;
             };
@@ -2477,7 +2477,7 @@
         function updateCoordinateDisplay(e) {
             const display = document.getElementById('coordinate-display');
             if (display) {
-                display.innerHTML = `Lat: ${e.latlng.lat.toFixed(6)}, Lng: ${e.latlng.lng.toFixed(6)}`;
+                display.innerHTML = `Lat: ${e.latlng.lat.toFixed(6)},Lon: ${e.latlng.lng.toFixed(6)}`;
             }
         }
 
