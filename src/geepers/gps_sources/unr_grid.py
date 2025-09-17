@@ -301,9 +301,7 @@ class UnrGridSource(BaseGpsSource):
         # UNR Grid is in millimeters instead of meters:
         df_out.loc[:, ["east", "north", "up"]] /= 1000
 
-        StationObservationSchema.validate(df_out, lazy=True, inplace=True)
-
-        return df_out
+        return StationObservationSchema.validate(df_out, lazy=True)
 
     @staticmethod
     @lru_cache(maxsize=1)
