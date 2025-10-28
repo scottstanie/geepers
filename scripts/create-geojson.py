@@ -1,6 +1,7 @@
 import datetime
 import json
 from pathlib import Path
+from typing import Literal
 
 import pandas as pd
 import tyro
@@ -84,6 +85,7 @@ def main(
     bbox: tuple[float, float, float, float],
     start_date: datetime.datetime = datetime.datetime(2016, 1, 1),
     output_dir=Path("geojson_sources"),
+    version: Literal["0.1", "0.2"] = "0.2",
 ):
     """Export a GeoDataFrame to multiple GeoJSON files organized by date.
 
@@ -98,8 +100,8 @@ def main(
         Default is 2016-01-01
 
     """
-    unrg = UnrGridSource()
-    gdf = unrg.timeseries_many(bbox=bbox, start_date=start_date)
+    unrg = UnrGridSource(version=version)
+    gdf = unrg.timeseries_many(bbox=bbox,start_date=start_date)
     export_gdf_to_geojson_sources(gdf=gdf, output_dir=output_dir)
 
 
